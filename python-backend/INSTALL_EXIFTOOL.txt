@@ -1,0 +1,117 @@
+====================================================================
+        ExifTool 설치 가이드
+====================================================================
+
+ExifTool이 없어서 메타데이터를 추출할 수 없습니다!
+
+📥 설치 방법:
+
+방법 1: 수동 설치 (가장 쉬움)
+====================================
+
+1. 다운로드
+   - 브라우저에서 열기: https://exiftool.org/
+   - "Windows Executable" 클릭
+   - exiftool-XX.XX.zip 다운로드
+
+2. 압축 해제
+   - 다운로드한 ZIP 파일을 우클릭
+   - "압축 풀기" 또는 "Extract All"
+   - exiftool(-k).exe 파일을 찾으세요
+
+3. 파일 이름 변경
+   - exiftool(-k).exe 우클릭
+   - "이름 바꾸기"
+   - exiftool.exe 로 변경
+
+4. 파일 복사
+   - exiftool.exe를 복사 (Ctrl+C)
+   - 이 폴더로 이동:
+     C:\Users\GSENR\Desktop\BCHP-THERMA\python-backend\
+   - 붙여넣기 (Ctrl+V)
+
+5. Flask 서버 재시작
+   - 터미널에서 Ctrl+C (서버 종료)
+   - python app.py (서버 시작)
+
+
+방법 2: 다운로드 폴더에 설치
+====================================
+
+1-3은 위와 동일
+
+4. 파일을 다운로드 폴더에 남겨두기
+   C:\Users\GSENR\Downloads\exiftool.exe
+
+5. Flask 서버 재시작 (위와 동일)
+
+
+방법 3: PowerShell 명령어로 설치
+====================================
+
+PowerShell을 관리자 권한으로 실행 후:
+
+# 다운로드 (Chocolatey 사용)
+choco install exiftool
+
+또는
+
+# 수동 다운로드 후 PATH 추가
+$env:PATH += ";C:\path\to\exiftool"
+
+
+====================================================================
+✅ 설치 확인
+====================================================================
+
+1. Flask 서버 재시작 후 터미널에서 확인:
+   ✅ ExifTool 발견! 
+   메시지가 보이면 성공!
+
+2. 웹에서 확인:
+   - http://localhost:3000/exif-test 접속
+   - "Flask 상태 확인" 버튼 클릭
+   - exiftool_available: true 확인
+
+3. 테스트:
+   - 이미지 파일 선택
+   - "메타데이터 추출" 버튼 클릭
+   - 온도 정보 등이 표시되면 성공!
+
+
+====================================================================
+❓ 문제 해결
+====================================================================
+
+Q: 파일을 복사했는데도 인식이 안 돼요!
+A: Flask 서버를 재시작하세요 (Ctrl+C 후 python app.py)
+
+Q: 파일 이름을 어떻게 바꾸나요?
+A: 파일 우클릭 → "이름 바꾸기" → exiftool.exe 입력
+
+Q: 파일이 어디 있는지 모르겠어요!
+A: Windows 검색 (Win+S) → "exiftool" 검색
+
+Q: 여전히 안 돼요!
+A: python-backend 폴더에서 python find_exiftool.py 실행
+
+
+====================================================================
+💡 파일 경로 예시
+====================================================================
+
+올바른 위치:
+  ✅ C:\Users\GSENR\Desktop\BCHP-THERMA\python-backend\exiftool.exe
+  ✅ C:\Users\GSENR\Downloads\exiftool.exe
+
+잘못된 위치:
+  ❌ C:\Users\GSENR\Downloads\exiftool(-k).exe (이름 변경 필요)
+  ❌ C:\Users\GSENR\Downloads\exiftool-12.70\exiftool(-k).exe (이동 필요)
+  ❌ C:\Users\GSENR\Desktop\exiftool.exe (python-backend 폴더로 이동)
+
+
+====================================================================
+
+설치 후 브라우저에서 http://localhost:3000/exif-test 로 테스트!
+
+

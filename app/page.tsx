@@ -9,31 +9,46 @@ export default function HomePage() {
       {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
               <Activity className="h-6 w-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">Therma-Twin</h1>
-              <p className="text-xs text-muted-foreground">열배관 건전성 관리</p>
+              <h1 className="text-xl font-bold text-foreground">반월 열병합 열배관 관리시스템</h1>
+              <p className="text-xs text-muted-foreground">BCHP Thermal Pipe Management System</p>
             </div>
-          </div>
+          </Link>
           <nav className="flex items-center gap-4">
-            <Link href="/dashboard">
+            <Link href="/data">
               <Button variant="ghost" className="text-foreground">
-                대시보드
+                💾 데이터관리
               </Button>
             </Link>
-            <Link href="/inspections">
+            <Link href="/upload">
               <Button variant="ghost" className="text-foreground">
-                점검 기록
+                📤 업로드
               </Button>
             </Link>
             <Link href="/compare">
               <Button variant="ghost" className="text-foreground">
-                이미지 비교
+                📊 비교분석
               </Button>
             </Link>
+            {/* 개발자 메뉴 (숨김) */}
+            {process.env.NODE_ENV === 'development' && (
+              <>
+                <Link href="/debug">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground">
+                    🐛
+                  </Button>
+                </Link>
+                <Link href="/exif-test">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground">
+                    🔬
+                  </Button>
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -53,7 +68,16 @@ export default function HomePage() {
           <div className="flex items-center justify-center gap-4">
             <Link href="/upload">
               <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90">
-                데이터 업로드
+                📤 이미지 업로드
+              </Button>
+            </Link>
+            <Link href="/data">
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-border text-foreground hover:bg-muted bg-transparent"
+              >
+                💾 데이터 관리
               </Button>
             </Link>
             <Link href="/compare">
@@ -62,55 +86,54 @@ export default function HomePage() {
                 variant="outline"
                 className="border-border text-foreground hover:bg-muted bg-transparent"
               >
-                이미지 비교 시작
+                📊 비교분석
               </Button>
             </Link>
           </div>
+          <p className="mt-6 text-sm text-muted-foreground">
+            💡 간단한 3단계: 이미지 업로드 → 데이터 확인 → GPS 기반 비교
+          </p>
         </div>
       </section>
 
       {/* Features Grid */}
       <section className="container mx-auto px-6 py-16">
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <Database className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-card-foreground">데이터 관리</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              배관 정보와 점검 이력을 체계적으로 관리하고 메타데이터를 추적합니다.
-            </p>
-          </Card>
+        <div className="grid gap-6 md:grid-cols-3">
+          <Link href="/data">
+            <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <Database className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-card-foreground">💾 데이터 관리</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                GPS, 온도, 메타데이터가 포함된 모든 열화상 이미지를 한눈에 확인하고 관리합니다.
+              </p>
+            </Card>
+          </Link>
 
-          <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
-              <ImageIcon className="h-6 w-6 text-accent" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-card-foreground">이미지 비교</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              동기화된 줌/팬 컨트롤로 과거와 현재 열화상 이미지를 나란히 비교합니다.
-            </p>
-          </Card>
+          <Link href="/upload">
+            <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
+                <ImageIcon className="h-6 w-6 text-accent" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-card-foreground">📤 이미지 업로드</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                열화상 이미지 업로드 시 자동으로 GPS 좌표, 온도, 카메라 정보를 추출하여 저장합니다.
+              </p>
+            </Card>
+          </Link>
 
-          <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-              <LineChart className="h-6 w-6 text-primary" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-card-foreground">온도 분석</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              스팟, 영역, 라인 프로파일 도구로 정밀한 온도 데이터를 측정합니다.
-            </p>
-          </Card>
-
-          <Card className="border-border bg-card p-6">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-accent/10">
-              <Activity className="h-6 w-6 text-accent" />
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-card-foreground">결함 예측</h3>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              온도 변화 패턴을 분석하여 잠재적 결함을 조기에 감지합니다.
-            </p>
-          </Card>
+          <Link href="/compare">
+            <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <LineChart className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-card-foreground">📊 GPS 기반 비교</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                동일한 GPS 위치에서 촬영된 이미지들을 시계열로 비교하여 온도 변화를 분석합니다.
+              </p>
+            </Card>
+          </Link>
         </div>
       </section>
 
@@ -119,16 +142,16 @@ export default function HomePage() {
         <div className="container mx-auto px-6 py-16">
           <div className="grid gap-8 md:grid-cols-3">
             <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-primary">99.2%</div>
-              <div className="text-sm text-muted-foreground">결함 감지 정확도</div>
+              <div className="mb-2 text-4xl font-bold text-primary">100%</div>
+              <div className="text-sm text-muted-foreground">자동 메타데이터 추출</div>
             </div>
             <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-accent">3배</div>
-              <div className="text-sm text-muted-foreground">점검 효율 향상</div>
+              <div className="mb-2 text-4xl font-bold text-accent">GPS 기반</div>
+              <div className="text-sm text-muted-foreground">위치별 시계열 비교</div>
             </div>
             <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-primary">24시간</div>
-              <div className="text-sm text-muted-foreground">실시간 모니터링</div>
+              <div className="mb-2 text-4xl font-bold text-primary">실시간</div>
+              <div className="text-sm text-muted-foreground">온도 정보 추적</div>
             </div>
           </div>
         </div>
@@ -138,7 +161,7 @@ export default function HomePage() {
       <footer className="border-t border-border bg-card">
         <div className="container mx-auto px-6 py-8">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">© 2025 Therma-Twin. 반월고객지원센터</p>
+            <p className="text-sm text-muted-foreground">© 2025 반월 열병합 열배관 관리시스템. 반월고객지원센터</p>
             <div className="flex gap-6">
               <Link href="/docs" className="text-sm text-muted-foreground hover:text-foreground">
                 문서

@@ -1,0 +1,189 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { query } from '@/lib/db/connection'
+import { ThermalImage } from '@/lib/types/database'
+import {
+  saveImageFile,
+  generateThumbnail,
+  validateFileSize,
+  validateFileExtension,
+} from '@/lib/utils/file-upload'
+
+const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+
+/**
+ * POST /api/thermal-images-with-metadata
+ * 메타데이터 자동 추출 + 이미지 업로드
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const formData = await request.formData()
+    
+    const inspection_id = formData.get('inspection_id') as string
+    const image_type = formData.get('image_type') as 'thermal' | 'real'
+    const imageFile = formData.get('image_file') as File
+    const notes = formData.get('notes') as string
+    let capture_timestamp = formData.get('capture_timestamp') as string
+
+    // 필수 필드 검증
+    if (!inspection_id || !image_type || !imageFile) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '점검 ID, 이미지 타입, 이미지 파일은 필수 항목입니다.',
+        },
+        { status: 400 }
+      )
+    }
+
+    // 파일 크기 및 확장자 검증
+    if (!validateFileSize(imageFile, 50)) {
+      return NextResponse.json(
+        { success: false, error: '파일 크기는 50MB를 초과할 수 없습니다.' },
+        { status: 400 }
+      )
+    }
+
+    if (!validateFileExtension(imageFile)) {
+      return NextResponse.json(
+        { success: false, error: '지원하지 않는 파일 형식입니다.' },
+        { status: 400 }
+      )
+    }
+
+    // 1. ExifTool로 메타데이터 추출
+    let metadata = null
+    let thermal_metadata = null
+    
+    try {
+      const metadataFormData = new FormData()
+      metadataFormData.append('file', imageFile)
+      
+      const flaskResponse = await fetch(`${FLASK_SERVER}/analyze`, {
+        method: 'POST',
+        body: metadataFormData,
+      })
+      
+      if (flaskResponse.ok) {
+        const result = await flaskResponse.json()
+        if (result.success) {
+          metadata = result.metadata
+          thermal_metadata = result.thermal_data
+          
+          // 메타데이터에서 촬영 시간 추출 (사용자가 입력하지 않은 경우)
+          if (!capture_timestamp && thermal_metadata?.DateTimeOriginal) {
+            capture_timestamp = thermal_metadata.DateTimeOriginal.replace(/(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')
+            console.log('📅 메타데이터에서 촬영 시간 추출:', capture_timestamp)
+          }
+        }
+      }
+    } catch (metadataError) {
+      console.warn('⚠️ 메타데이터 추출 실패 (계속 진행):', metadataError)
+    }
+
+    // 촬영 시간이 없으면 현재 시간 사용
+    if (!capture_timestamp) {
+      capture_timestamp = new Date().toISOString()
+      console.log('📅 촬영 시간 미지정, 현재 시간 사용')
+    }
+
+    // 2. 점검 정보 및 구간 조회
+    const inspectionResult = await query(
+      `SELECT i.inspection_id, p.section_category 
+       FROM inspections i
+       JOIN pipes p ON i.pipe_id = p.pipe_id
+       WHERE i.inspection_id = $1`,
+      [inspection_id]
+    )
+
+    if (!inspectionResult.rowCount || inspectionResult.rowCount === 0) {
+      return NextResponse.json(
+        { success: false, error: '존재하지 않는 점검 ID입니다.' },
+        { status: 404 }
+      )
+    }
+
+    const sectionCategory = inspectionResult.rows[0].section_category
+
+    // 3. Supabase Storage에 파일 업로드
+    const captureDate = new Date(capture_timestamp)
+    const imageUpload = await saveImageFile(imageFile, image_type, captureDate, sectionCategory)
+    const thumbnailUpload = await generateThumbnail(imageFile, image_type, captureDate, sectionCategory)
+
+    // 4. DB에 이미지 정보 + 메타데이터 저장
+    const file_size_bytes = imageFile.size
+    const file_format = imageFile.type.split('/')[1] || 'jpg'
+
+    const result = await query<ThermalImage>(
+      `INSERT INTO thermal_images (
+        inspection_id, image_url, thumbnail_url, 
+        image_width, image_height, 
+        capture_timestamp, file_size_bytes, file_format, image_type,
+        camera_model
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *`,
+      [
+        inspection_id,
+        imageUpload.url,
+        thumbnailUpload.url,
+        thermal_metadata?.ImageWidth || null,
+        thermal_metadata?.ImageHeight || null,
+        capture_timestamp,
+        file_size_bytes,
+        file_format,
+        image_type,
+        thermal_metadata?.Model || thermal_metadata?.Make || null,
+      ]
+    )
+
+    // 5. 메타데이터를 별도 테이블에 저장 (선택사항)
+    if (metadata) {
+      try {
+        await query(
+          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (image_id) DO UPDATE 
+           SET metadata_json = $2, thermal_data_json = $3`,
+          [
+            result.rows[0].image_id,
+            JSON.stringify(metadata),
+            JSON.stringify(thermal_metadata),
+          ]
+        )
+      } catch (metaError) {
+        // 테이블이 없으면 무시 (선택사항)
+        console.warn('메타데이터 저장 실패 (무시):', metaError)
+      }
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: `${image_type === 'thermal' ? '열화상' : '실화상'} 이미지가 업로드되었습니다.`,
+        data: result.rows[0],
+        metadata_extracted: !!metadata,
+        thermal_data: thermal_metadata,
+        file_info: {
+          original_name: imageFile.name,
+          section: sectionCategory,
+          storage_path: imageUpload.path,
+          public_url: imageUpload.url,
+          size: file_size_bytes,
+          type: image_type,
+        },
+      },
+      { status: 201 }
+    )
+  } catch (error) {
+    console.error('이미지 업로드 오류:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : '이미지 업로드 중 오류가 발생했습니다.',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+

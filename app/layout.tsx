@@ -7,9 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.app',
+  title: '반월 열병합 열배관 관리시스템 | BCHP Thermal Pipe Management',
+  description: '열화상 데이터 기반 배관 건전성 관리 플랫폼 - BCHP Thermal Pipe Health Management System',
   icons: {
     icon: [
       {

@@ -8,6 +8,7 @@ export interface Pipe {
   diameter_mm?: number
   length_m?: number
   installation_date?: Date
+  section_category?: string // A-1, A-2, B-1, B-2, etc.
   notes?: string
   created_at: Date
   updated_at: Date
@@ -37,6 +38,7 @@ export interface ThermalImage {
   capture_timestamp: Date
   file_size_bytes?: number
   file_format?: string
+  image_type: 'thermal' | 'real' // 'thermal': 열화상, 'real': 실화상
   created_at: Date
 }
 
