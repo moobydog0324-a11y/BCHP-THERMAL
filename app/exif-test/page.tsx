@@ -51,7 +51,8 @@ export default function ExifTestPage() {
       const formData = new FormData()
       formData.append("file", selectedFile)
 
-      const response = await fetch("/api/exif/analyze", {
+      // 구조화된 포맷 API 사용
+      const response = await fetch("/api/exif/analyze-formatted", {
         method: "POST",
         body: formData,
       })
@@ -179,92 +180,121 @@ export default function ExifTestPage() {
           {/* 분석 결과 */}
           {result && (
             <Card className={`border-border bg-card p-6 ${result.success ? "" : "border-red-500 bg-red-50"}`}>
-              <div className="mb-4 flex items-center gap-2">
-                {result.success ? (
-                  <CheckCircle2 className="h-6 w-6 text-green-600" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-600" />
-                )}
-                <h3 className="text-xl font-bold text-card-foreground">
-                  {result.success ? "✅ 메타데이터 추출 성공" : "❌ 추출 실패"}
-                </h3>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {result.success ? (
+                    <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  )}
+                  <div>
+                    <h3 className="text-xl font-bold text-card-foreground">
+                      {result.success ? "✅ 메타데이터 추출 성공" : "❌ 추출 실패"}
+                    </h3>
+                    {result.success && result.filename && (
+                      <p className="text-sm text-muted-foreground">
+                        {result.filename} • 처리 시간: {result.processing_time}초
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              {result.success && result.thermal_data && (
+              {result.success && result.sections && (
                 <div className="space-y-4">
-                  {/* 주요 정보 */}
-                  <div className="rounded-lg border border-primary bg-primary/5 p-4">
-                    <h4 className="mb-3 font-semibold text-primary">📸 주요 정보</h4>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {result.thermal_data.Make && (
-                        <div>
-                          <div className="text-xs text-muted-foreground">제조사</div>
-                          <div className="font-semibold">{result.thermal_data.Make}</div>
-                        </div>
-                      )}
-                      {result.thermal_data.Model && (
-                        <div>
-                          <div className="text-xs text-muted-foreground">모델</div>
-                          <div className="font-semibold">{result.thermal_data.Model}</div>
-                        </div>
-                      )}
-                      {result.thermal_data.DateTimeOriginal && (
-                        <div>
-                          <div className="text-xs text-muted-foreground">촬영 시간</div>
-                          <div className="font-semibold">{result.thermal_data.DateTimeOriginal}</div>
-                        </div>
-                      )}
-                      {result.thermal_data.Emissivity && (
-                        <div>
-                          <div className="text-xs text-muted-foreground">방사율</div>
-                          <div className="font-semibold">{result.thermal_data.Emissivity}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 온도 정보 */}
-                  {(result.thermal_data.AtmosphericTemperature || 
-                    result.thermal_data.ReflectedApparentTemperature ||
-                    result.thermal_data.ObjectDistance) && (
-                    <div className="rounded-lg border border-orange-300 bg-orange-50 p-4">
-                      <h4 className="mb-3 font-semibold text-orange-900">🌡️ 온도 정보</h4>
-                      <div className="grid gap-2 md:grid-cols-3">
-                        {result.thermal_data.AtmosphericTemperature && (
-                          <div>
-                            <div className="text-xs text-orange-700">대기 온도</div>
-                            <div className="font-semibold text-orange-900">
-                              {result.thermal_data.AtmosphericTemperature}°C
-                            </div>
-                          </div>
-                        )}
-                        {result.thermal_data.ReflectedApparentTemperature && (
-                          <div>
-                            <div className="text-xs text-orange-700">반사 온도</div>
-                            <div className="font-semibold text-orange-900">
-                              {result.thermal_data.ReflectedApparentTemperature}°C
-                            </div>
-                          </div>
-                        )}
-                        {result.thermal_data.ObjectDistance && (
-                          <div>
-                            <div className="text-xs text-orange-700">촬영 거리</div>
-                            <div className="font-semibold text-orange-900">
-                              {result.thermal_data.ObjectDistance}m
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                  {/* 경고 메시지 */}
+                  {result.warnings && result.warnings.length > 0 && (
+                    <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-4">
+                      <h4 className="mb-2 font-semibold text-yellow-900">⚠️ 경고</h4>
+                      {result.warnings.map((warning: string, idx: number) => (
+                        <p key={idx} className="text-sm text-yellow-800">{warning}</p>
+                      ))}
                     </div>
                   )}
 
-                  {/* 전체 메타데이터 (JSON) */}
+                  {/* 각 섹션 렌더링 */}
+                  {Object.entries(result.sections)
+                    .sort(([, a]: any, [, b]: any) => (a.priority || 999) - (b.priority || 999))
+                    .map(([key, section]: any) => (
+                      <details 
+                        key={key} 
+                        className="rounded-lg border border-border bg-muted/20 p-4"
+                        open={!section.collapsed}
+                      >
+                        <summary className="cursor-pointer font-semibold text-foreground hover:text-primary">
+                          {section.title}
+                        </summary>
+                        <div className="mt-4 space-y-3">
+                          {section.data.warning && (
+                            <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
+                              {section.data.warning}
+                            </div>
+                          )}
+                          {section.data.note && (
+                            <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
+                              💡 {section.data.note}
+                            </div>
+                          )}
+                          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                            {Object.entries(section.data)
+                              .filter(([k]: any) => k !== 'warning' && k !== 'note' && k !== 'atmospheric_trans')
+                              .map(([fieldKey, fieldData]: any) => {
+                                if (!fieldData || typeof fieldData !== 'object' || !fieldData.label) return null
+                                return (
+                                  <div key={fieldKey} className="rounded-md border border-border/50 bg-background p-3">
+                                    <div className="text-xs text-muted-foreground">{fieldData.label}</div>
+                                    <div className="font-semibold text-foreground">{fieldData.value}</div>
+                                    {fieldData.description && (
+                                      <div className="mt-1 text-xs text-muted-foreground italic">
+                                        {fieldData.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                          </div>
+                          
+                          {/* 대기 투과 계수는 별도 표시 */}
+                          {section.data.atmospheric_trans && (
+                            <div className="mt-3 rounded-md border border-border/50 bg-background p-3">
+                              <div className="mb-2 text-sm font-semibold text-foreground">
+                                {section.data.atmospheric_trans.label}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-5">
+                                <div>
+                                  <span className="text-muted-foreground">Alpha1: </span>
+                                  <span className="font-mono">{section.data.atmospheric_trans.alpha1 ?? 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Alpha2: </span>
+                                  <span className="font-mono">{section.data.atmospheric_trans.alpha2 ?? 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Beta1: </span>
+                                  <span className="font-mono">{section.data.atmospheric_trans.beta1 ?? 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Beta2: </span>
+                                  <span className="font-mono">{section.data.atmospheric_trans.beta2 ?? 'N/A'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">X: </span>
+                                  <span className="font-mono">{section.data.atmospheric_trans.x ?? 'N/A'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    ))}
+
+                  {/* 원본 JSON 데이터 */}
                   <details className="rounded-lg border border-border bg-muted/20 p-4">
                     <summary className="cursor-pointer font-semibold text-foreground">
-                      📋 전체 메타데이터 보기 (JSON)
+                      📋 원본 메타데이터 (JSON)
                     </summary>
                     <pre className="mt-4 overflow-x-auto rounded-md bg-black p-4 text-xs text-green-400">
-                      {JSON.stringify(result.metadata, null, 2)}
+                      {JSON.stringify(result._raw_metadata, null, 2)}
                     </pre>
                   </details>
                 </div>

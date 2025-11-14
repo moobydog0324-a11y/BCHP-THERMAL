@@ -79,12 +79,26 @@ export async function GET(request: NextRequest) {
       // GPS 키 생성 (그룹핑용)
       const gpsKey = gpsToKey(lat, lon, precision)
 
-      // 온도 정보 추출
+      // 고도 파싱
+      let altitude = null
+      if (metadata?.GPSAltitude) {
+        const altStr = String(metadata.GPSAltitude)
+        const altMatch = altStr.match(/([-\d.]+)\s*m/i)
+        if (altMatch) {
+          let altValue = parseFloat(altMatch[1])
+          if (metadata.GPSAltitudeRef === 1 || metadata.GPSAltitudeRef === '1') {
+            altValue = -Math.abs(altValue)
+          } else {
+            altValue = Math.abs(altValue)
+          }
+          altitude = `${altValue.toFixed(1)}m`
+        }
+      }
+
+      // 온도 정보 추출 (카메라 기본값 제외)
       const temperatureInfo = {
         range_min: thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin,
         range_max: thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax,
-        atmospheric: thermalData?.AtmosphericTemperature || metadata?.AtmosphericTemperature,
-        reflected: thermalData?.ReflectedApparentTemperature || metadata?.ReflectedApparentTemperature,
       }
 
       const imageData = {
@@ -93,7 +107,7 @@ export async function GET(request: NextRequest) {
           latitude: lat,
           longitude: lon,
           formatted: formatGPS(lat, lon),
-          altitude: metadata?.GPSAltitude,
+          altitude: altitude,
           key: gpsKey,
         },
         temperature: temperatureInfo,

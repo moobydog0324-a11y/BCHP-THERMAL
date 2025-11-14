@@ -17,3 +17,10 @@ COMMENT ON COLUMN thermal_images.image_type IS '이미지 타입: thermal(열화
 
 
 
+
+
+
+
+
+
+

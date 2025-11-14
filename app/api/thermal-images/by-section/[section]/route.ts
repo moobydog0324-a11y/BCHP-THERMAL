@@ -34,7 +34,9 @@ export async function GET(
         ti.created_at,
         im.metadata_json,
         im.thermal_data_json,
-        p.section_category
+        p.section_category,
+        i.weather_condition,
+        i.ambient_temp_celsius
       FROM thermal_images ti
       LEFT JOIN image_metadata im ON ti.image_id = im.image_id
       JOIN inspections i ON ti.inspection_id = i.inspection_id
@@ -74,25 +76,39 @@ export async function GET(
         const lon = dmsToDecimal(metadata.GPSLongitude)
         
         if (lat !== null && lon !== null) {
+          // 고도 파싱 (GPSAltitude + GPSAltitudeRef 고려)
+          let altitude = null
+          if (metadata.GPSAltitude) {
+            const altStr = String(metadata.GPSAltitude)
+            const altMatch = altStr.match(/([-\d.]+)\s*m/i)
+            if (altMatch) {
+              let altValue = parseFloat(altMatch[1])
+              // GPSAltitudeRef: 0 = Above Sea Level, 1 = Below Sea Level
+              if (metadata.GPSAltitudeRef === 1 || metadata.GPSAltitudeRef === '1') {
+                altValue = -Math.abs(altValue)
+              } else {
+                altValue = Math.abs(altValue) // Above Sea Level은 항상 양수
+              }
+              altitude = `${altValue.toFixed(1)}m`
+            }
+          }
+          
           gpsInfo = {
             latitude: lat,
             longitude: lon,
             formatted: formatGPS(lat, lon),
-            altitude: metadata.GPSAltitude,
+            altitude: altitude,
           }
         }
       }
 
-      // 온도 정보 추출
+      // 온도 정보 추출 (카메라 기본 설정값 제외)
       const temperatureInfo = {
         range_min: thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin || null,
         range_max: thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax || null,
-        atmospheric: thermalData?.AtmosphericTemperature || metadata?.AtmosphericTemperature || null,
-        reflected: thermalData?.ReflectedApparentTemperature || metadata?.ReflectedApparentTemperature || null,
-        humidity: thermalData?.RelativeHumidity || metadata?.RelativeHumidity || null,
       }
 
-        // 기본 이미지 정보 + GPS + 온도
+        // 기본 이미지 정보 + GPS + 온도 + 전체 메타데이터
         return {
           image_id: row.image_id,
           inspection_id: row.inspection_id,
@@ -107,9 +123,14 @@ export async function GET(
           image_type: row.image_type,
           created_at: row.created_at,
           section_category: row.section_category,
+          weather_condition: row.weather_condition,
+          ambient_temp_celsius: row.ambient_temp_celsius,
           gps: gpsInfo,
           temperature: temperatureInfo,
           has_metadata: !!metadata,
+          // 전체 메타데이터 포함 (필요한 경우 프론트엔드에서 선택적으로 사용)
+          metadata_json: metadata || null,
+          thermal_data_json: thermalData || null,
         }
       } catch (rowError) {
         errorCount++

@@ -156,15 +156,12 @@ def extract_accurate_temperature(image_path, exiftool_path=None):
     """
     FLIR Image Extractor 라이브러리를 사용하여 정확한 온도 추출
     모든 보정(대기전송, 방사율, 반사 등)이 자동으로 적용됩니다.
-    
-    ⚠️ 주의: 이 함수는 결정론적(deterministic)입니다.
-    같은 이미지 파일은 항상 같은 온도 값을 반환해야 합니다.
     """
     try:
         # FLIR 이미지 추출기 초기화
         fie = FlirImageExtractor(exiftool_path=exiftool_path)
         
-        # 이미지 처리 (결정론적 처리 보장)
+        # 이미지 처리
         fie.process_image(image_path)
         
         # 온도 배열 가져오기 (모든 보정이 적용된 실제 온도)
@@ -174,12 +171,12 @@ def extract_accurate_temperature(image_path, exiftool_path=None):
             print("   ⚠️  온도 데이터를 가져올 수 없습니다.")
             return None
         
-        # 온도 통계 계산 (부동소수점 정밀도 보장)
+        # 온도 통계 계산
         stats = {
-            'min_temp': float(np.round(np.min(thermal_np), 2)),
-            'max_temp': float(np.round(np.max(thermal_np), 2)),
-            'avg_temp': float(np.round(np.mean(thermal_np), 2)),
-            'median_temp': float(np.round(np.median(thermal_np), 2)),
+            'min_temp': float(round(np.min(thermal_np), 2)),
+            'max_temp': float(round(np.max(thermal_np), 2)),
+            'avg_temp': float(round(np.mean(thermal_np), 2)),
+            'median_temp': float(round(np.median(thermal_np), 2)),
             'std_temp': float(round(np.std(thermal_np), 2)),
             'pixel_count': int(thermal_np.size),
             'data_source': 'flir-image-extractor',
@@ -237,140 +234,6 @@ def extract_thermal_data(metadata):
             thermal_data[field] = metadata[field]
     
     return thermal_data
-
-@app.route("/generate-thermal-image", methods=["POST"])
-def generate_thermal_image():
-    """열화상 이미지 생성 (다양한 컬러맵 지원)"""
-    import time
-    import io
-    import base64
-    import matplotlib
-    matplotlib.use('Agg')  # GUI 없이 사용
-    import matplotlib.pyplot as plt
-    from matplotlib import cm
-    
-    start_time = time.time()
-    
-    try:
-        print("\n" + "="*60)
-        print("🎨 열화상 이미지 생성 요청")
-        
-        file = request.files.get("file")
-        colormap = request.form.get("colormap", "jet")  # 기본: jet
-        
-        if not file:
-            return jsonify({"success": False, "error": "파일이 없습니다."}), 400
-        
-        print(f"📁 파일: {file.filename}")
-        print(f"🎨 컬러맵: {colormap}")
-        
-        # 임시 파일로 저장
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        tmp_path = tempfile.mktemp(suffix=suffix)
-        file.save(tmp_path)
-        
-        try:
-            # FLIR Image Extractor로 온도 데이터 추출
-            print(f"\n🔥 온도 데이터 추출 중...")
-            fie = FlirImageExtractor(exiftool_path=EXIFTOOL_PATH)
-            fie.process_image(tmp_path)
-            thermal_np = fie.get_thermal_np()
-            
-            if thermal_np is None or thermal_np.size == 0:
-                os.remove(tmp_path)
-                return jsonify({
-                    "success": False, 
-                    "error": "열화상 데이터를 추출할 수 없습니다."
-                }), 400
-            
-            print(f"✅ 온도 배열 크기: {thermal_np.shape}")
-            print(f"   온도 범위: {np.min(thermal_np):.2f}°C ~ {np.max(thermal_np):.2f}°C")
-            
-            # 컬러맵으로 이미지 생성
-            print(f"\n🎨 컬러맵 '{colormap}' 적용 중...")
-            
-            fig, ax = plt.subplots(figsize=(10, 8), dpi=100)
-            
-            # 컬러맵 적용
-            valid_colormaps = {
-                'jet': cm.jet,
-                'viridis': cm.viridis,
-                'plasma': cm.plasma,
-                'inferno': cm.inferno,
-                'hot': cm.hot,
-                'cool': cm.cool,
-                'rainbow': cm.rainbow,
-                'turbo': cm.turbo,
-                'seismic': cm.seismic,
-                'coolwarm': cm.coolwarm,
-            }
-            
-            cmap = valid_colormaps.get(colormap, cm.jet)
-            
-            im = ax.imshow(thermal_np, cmap=cmap, aspect='auto')
-            
-            # 컬러바 추가
-            cbar = plt.colorbar(im, ax=ax, label='온도 (°C)')
-            
-            # 축 제거 (깔끔한 이미지)
-            ax.axis('off')
-            
-            plt.tight_layout()
-            
-            # 이미지를 바이트로 변환
-            img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
-            img_buffer.seek(0)
-            img_base64 = base64.b64encode(img_buffer.read()).decode('utf-8')
-            
-            plt.close(fig)
-            
-            # 온도 데이터를 리스트로 변환 (JSON 전송용)
-            # 전체 데이터는 너무 크므로 압축된 형태로 전송
-            height, width = thermal_np.shape
-            
-            # 온도 통계
-            temp_stats = {
-                'min': float(np.round(np.min(thermal_np), 2)),
-                'max': float(np.round(np.max(thermal_np), 2)),
-                'mean': float(np.round(np.mean(thermal_np), 2)),
-                'median': float(np.round(np.median(thermal_np), 2)),
-                'std': float(np.round(np.std(thermal_np), 2))
-            }
-            
-            # 온도 데이터를 1D 배열로 변환 (클라이언트에서 재구성)
-            temp_data_flat = thermal_np.flatten().tolist()
-            
-            os.remove(tmp_path)
-            
-            total_time = time.time() - start_time
-            print(f"✅ 이미지 생성 완료 ({total_time:.2f}초)")
-            print("="*60 + "\n")
-            
-            return jsonify({
-                "success": True,
-                "image": f"data:image/png;base64,{img_base64}",
-                "temperature_data": temp_data_flat,
-                "width": int(width),
-                "height": int(height),
-                "stats": temp_stats,
-                "colormap": colormap,
-                "processing_time": round(total_time, 2)
-            })
-            
-        except Exception as e:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            print(f"❌ 이미지 생성 오류: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({"success": False, "error": str(e)}), 500
-            
-    except Exception as e:
-        print(f"❌ 예외: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
     print("\n" + "="*60)
