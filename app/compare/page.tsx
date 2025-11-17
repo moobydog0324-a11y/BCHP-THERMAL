@@ -61,11 +61,50 @@ export default function ComparePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [expandedMetadata, setExpandedMetadata] = useState<Record<number, boolean>>({})
+  const [allImages, setAllImages] = useState<ThermalImage[]>([]) // 모든 이미지 (thermal + real)
+  const [showingRealImage, setShowingRealImage] = useState<Record<number, boolean>>({}) // 실화상 표시 여부
 
   const sections: SectionCategory[] = [
     'A-1', 'A-2', 'B-1', 'B-2', 'C-1', 'C-2', 'D-1', 'D-2', 
     'E-1', 'E-2', 'F-1', 'F-2', 'G-1', 'G-2'
   ]
+
+  // 열화상에 대응하는 실화상 찾기 (GPS + 시간 기준)
+  const findMatchingRealImage = (thermalImage: ThermalImage): ThermalImage | null => {
+    const realImages = allImages.filter(img => img.image_type === 'real')
+    
+    if (!thermalImage.gps) return null
+    
+    // 같은 GPS 위치 (소수점 4자리 = 약 11m 반경)
+    const matchingByGPS = realImages.filter(img => {
+      if (!img.gps) return false
+      const latDiff = Math.abs(img.gps.latitude - thermalImage.gps!.latitude)
+      const lonDiff = Math.abs(img.gps.longitude - thermalImage.gps!.longitude)
+      return latDiff < 0.0001 && lonDiff < 0.0001 // 약 11m 이내
+    })
+    
+    if (matchingByGPS.length === 0) return null
+    
+    // 같은 위치 중에서 시간이 가장 가까운 것 선택 (5분 이내)
+    const thermalTime = new Date(thermalImage.capture_timestamp).getTime()
+    const closest = matchingByGPS.reduce((prev, curr) => {
+      const prevDiff = Math.abs(new Date(prev.capture_timestamp).getTime() - thermalTime)
+      const currDiff = Math.abs(new Date(curr.capture_timestamp).getTime() - thermalTime)
+      return currDiff < prevDiff ? curr : prev
+    })
+    
+    const timeDiff = Math.abs(new Date(closest.capture_timestamp).getTime() - thermalTime)
+    // 5분 이내 촬영된 것만 매칭으로 인정
+    return timeDiff < 5 * 60 * 1000 ? closest : null
+  }
+
+  // 실화상 토글
+  const toggleRealImage = (thermalImageId: number) => {
+    setShowingRealImage(prev => ({
+      ...prev,
+      [thermalImageId]: !prev[thermalImageId]
+    }))
+  }
 
   const toggleMetadata = (imageId: number) => {
     setExpandedMetadata(prev => ({
@@ -99,16 +138,23 @@ export default function ComparePage() {
       setLoading(true)
       setError("")
       
-      const response = await fetch(`/api/thermal-images/by-section/${selectedSection}?image_type=thermal`)
+      // 모든 이미지 타입 가져오기 (thermal + real)
+      const response = await fetch(`/api/thermal-images/by-section/${selectedSection}`)
       const result = await response.json()
 
       if (result.success) {
-        const images = result.data as ThermalImage[]
+        const fetchedImages = result.data as ThermalImage[]
+        
+        // 모든 이미지 저장 (실화상 매칭용)
+        setAllImages(fetchedImages)
+        
+        // 열화상 이미지만 필터링 (기본 표시용)
+        const thermalImages = fetchedImages.filter(img => img.image_type === 'thermal')
         
         // GPS 좌표 기반으로 그룹핑 (소수점 4자리 = 약 11m 반경)
         const grouped: Record<string, ThermalImage[]> = {}
         
-        images.forEach((img) => {
+        thermalImages.forEach((img) => {
           if (!img.gps) return
           
           const gpsKey = `${img.gps.latitude.toFixed(4)},${img.gps.longitude.toFixed(4)}`
@@ -346,25 +392,58 @@ export default function ComparePage() {
 
                 {/* 시계열 이미지 그리드 */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {selectedGroup?.images.map((img, idx) => (
+                  {selectedGroup?.images.map((img, idx) => {
+                    const matchingRealImage = findMatchingRealImage(img)
+                    const isShowingReal = showingRealImage[img.image_id]
+                    const displayImage = isShowingReal && matchingRealImage ? matchingRealImage : img
+                    
+                    return (
                     <Card key={img.image_id} className="border-border bg-card p-4">
                       <div className="mb-2 flex items-start justify-between">
                         <div className="text-sm font-semibold text-primary">
                           #{idx + 1}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          ID: {img.image_id}
+                          ID: {displayImage.image_id}
                         </div>
                       </div>
                       
                       <div className="relative mb-3 aspect-video overflow-hidden rounded-lg bg-muted">
                         <Image
-                          src={img.image_url}
-                          alt={`열화상 이미지 ${img.image_id}`}
+                          src={displayImage.image_url}
+                          alt={`${isShowingReal ? '실화상' : '열화상'} 이미지 ${displayImage.image_id}`}
                           fill
                           className="object-cover"
                         />
+                        {/* 이미지 타입 배지 */}
+                        <div className={`absolute left-2 top-2 rounded px-2 py-1 text-xs font-semibold ${
+                          isShowingReal ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'
+                        }`}>
+                          {isShowingReal ? '📷 실화상' : '🌡️ 열화상'}
+                        </div>
                       </div>
+
+                      {/* 실화상 토글 버튼 */}
+                      {matchingRealImage && (
+                        <div className="mb-3">
+                          <Button
+                            variant={isShowingReal ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => toggleRealImage(img.image_id)}
+                            className="w-full"
+                          >
+                            {isShowingReal ? (
+                              <>
+                                🌡️ 열화상 보기
+                              </>
+                            ) : (
+                              <>
+                                📷 실화상 보기
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
 
                       <div className="space-y-1.5 text-xs">
                         {/* 촬영 시각 */}
@@ -586,7 +665,8 @@ export default function ComparePage() {
                         )}
                       </div>
                     </Card>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
