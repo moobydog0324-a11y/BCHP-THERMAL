@@ -426,7 +426,7 @@ export default function UploadPage() {
         <div className="mb-12 text-center">
           <h2 className="mb-4 text-4xl font-bold text-foreground">데이터 업로드</h2>
           <p className="text-lg text-muted-foreground">
-            배관 정보, 점검 기록, 열화상 이미지를 등록하세요
+            배관 정보, 점검 기록, 배관 이미지를 등록하세요
           </p>
         </div>
 
@@ -462,8 +462,8 @@ export default function UploadPage() {
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10">
                 <ImageIcon className="h-8 w-8 text-primary" />
               </div>
-              <h3 className="mb-2 text-xl font-semibold text-card-foreground">열화상 이미지</h3>
-              <p className="text-sm text-muted-foreground">촬영한 열화상 이미지를 업로드합니다</p>
+              <h3 className="mb-2 text-xl font-semibold text-card-foreground">배관 이미지 (실화상, 열화상)</h3>
+              <p className="text-sm text-muted-foreground">촬영한 배관 이미지를 업로드합니다</p>
             </Card>
           </div>
         ) : (
@@ -474,7 +474,7 @@ export default function UploadPage() {
                 <h3 className="text-2xl font-bold text-card-foreground">
                   {selectedType === "pipe" && "배관 정보 등록"}
                   {selectedType === "inspection" && "점검 기록 등록"}
-                  {selectedType === "image" && "열화상 이미지 업로드"}
+                  {selectedType === "image" && "배관 이미지 업로드 (실화상, 열화상)"}
                 </h3>
                 <Button variant="ghost" size="sm" onClick={() => setSelectedType(null)}>
                   <ArrowLeft className="mr-2 h-4 w-4" />
