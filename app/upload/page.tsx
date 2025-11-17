@@ -436,19 +436,21 @@ export default function UploadPage() {
         }
         formData.append("notes", notes)
         
-        console.log(`📤 [${file.name}] 업로드 시작 - 타입: ${detectedImageType} (${fileResult?.detectedBy})`)
-
-        console.log(`📤 파일 업로드 시작: ${file.name}`)
+        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${file.name} 업로드 시작 - 타입: ${detectedImageType} (${fileResult?.detectedBy || '자동'})`)
         
         const response = await fetch("/api/thermal-images", {
           method: "POST",
           body: formData,
         })
 
-        console.log(`📥 서버 응답: ${response.status}`)
+        console.log(`📥 [${file.name}] 서버 응답: ${response.status} ${response.statusText}`)
+        
+        if (!response.ok) {
+          throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`)
+        }
         
         const result = await response.json()
-        console.log(`📊 결과:`, result)
+        console.log(`✅ [${file.name}] 업로드 성공:`, result)
 
         if (result.success) {
           successCount++
@@ -471,8 +473,15 @@ export default function UploadPage() {
         }
       } catch (error) {
         errorCount++
-        const errorMsg = error instanceof Error ? error.message : "서버 오류"
-        console.error(`❌ 업로드 오류:`, error)
+        const errorMsg = error instanceof Error ? error.message : "알 수 없는 오류"
+        console.error(`❌ [${file.name}] 업로드 실패:`, errorMsg)
+        console.error(`상세 오류 정보:`, error)
+        
+        // 네트워크 오류인지 확인
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          console.error(`⚠️ 네트워크 오류: API 서버가 실행 중인지 확인하세요 (http://localhost:3000/api/thermal-images)`)
+        }
+        
         setUploadResults((prev) =>
           prev.map((r, idx) =>
             idx === i
