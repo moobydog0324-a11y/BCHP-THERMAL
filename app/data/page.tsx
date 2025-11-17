@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   AlertOctagon,
-  Info
+  Info,
+  Trash2
 } from "lucide-react"
 
 type ThermalImage = {
@@ -65,6 +66,11 @@ export default function DataManagementPage() {
   const [selectedImage, setSelectedImage] = useState<ThermalImage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; image: ThermalImage | null }>({
+    show: false,
+    image: null
+  })
+  const [deleting, setDeleting] = useState(false)
 
   const sections: SectionCategory[] = [
     'all', 'A-1', 'A-2', 'B-1', 'B-2', 'C-1', 'C-2', 'D-1', 'D-2', 
@@ -133,6 +139,56 @@ export default function DataManagementPage() {
   const formatFileSize = (bytes: string) => {
     const size = parseInt(bytes)
     return (size / 1024 / 1024).toFixed(2) + ' MB'
+  }
+
+  // 삭제 확인 팝업 열기
+  const openDeleteConfirm = (image: ThermalImage) => {
+    setDeleteConfirm({ show: true, image })
+  }
+
+  // 삭제 확인 팝업 닫기
+  const closeDeleteConfirm = () => {
+    if (!deleting) {
+      setDeleteConfirm({ show: false, image: null })
+    }
+  }
+
+  // 이미지 삭제 실행
+  const handleDeleteImage = async () => {
+    if (!deleteConfirm.image) return
+
+    setDeleting(true)
+    setError("")
+
+    try {
+      const response = await fetch('/api/thermal-images/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_id: deleteConfirm.image.image_id })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // 삭제 성공 - 목록에서 제거
+        setImages(prev => prev.filter(img => img.image_id !== deleteConfirm.image!.image_id))
+        setFilteredImages(prev => prev.filter(img => img.image_id !== deleteConfirm.image!.image_id))
+        
+        // 상세보기 모달이 열려있었다면 닫기
+        if (selectedImage?.image_id === deleteConfirm.image.image_id) {
+          setSelectedImage(null)
+        }
+
+        closeDeleteConfirm()
+      } else {
+        setError(result.error || '이미지 삭제에 실패했습니다.')
+      }
+    } catch (err) {
+      setError('이미지 삭제 중 오류가 발생했습니다.')
+      console.error(err)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   // 온도 경고 레벨 계산
@@ -425,17 +481,30 @@ export default function DataManagementPage() {
                     </div>
                   </div>
 
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedImage(img)
-                    }}
-                  >
-                    상세보기
-                  </Button>
+                  {/* 버튼들 */}
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedImage(img)
+                      }}
+                    >
+                      상세보기
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openDeleteConfirm(img)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}
@@ -592,6 +661,81 @@ export default function DataManagementPage() {
                   </Button>
                 </Link>
               </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* 삭제 확인 팝업 */}
+      {deleteConfirm.show && deleteConfirm.image && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <Card className="w-full max-w-md border-border bg-card p-6 shadow-xl">
+            <div className="mb-4 text-center">
+              <div className="mb-4 flex justify-center">
+                <div className="rounded-full bg-destructive/10 p-4">
+                  <Trash2 className="h-8 w-8 text-destructive" />
+                </div>
+              </div>
+              <h3 className="mb-2 text-xl font-bold text-card-foreground">
+                이미지 삭제 확인
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                이 작업은 되돌릴 수 없습니다.
+              </p>
+            </div>
+
+            <div className="mb-6 rounded-lg border border-border bg-muted/50 p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold text-card-foreground">
+                  삭제할 이미지 정보
+                </span>
+              </div>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div>ID: {deleteConfirm.image.image_id}</div>
+                <div>구역: {deleteConfirm.image.section_category}</div>
+                <div>촬영일시: {formatDateTime(deleteConfirm.image.capture_timestamp)}</div>
+                {deleteConfirm.image.temperature.range_max && (
+                  <div className="font-semibold text-destructive">
+                    최고온도: {deleteConfirm.image.temperature.range_max}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {error && (
+              <div className="mb-4 rounded-lg border border-destructive bg-destructive/10 p-3">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={closeDeleteConfirm}
+                disabled={deleting}
+              >
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={handleDeleteImage}
+                disabled={deleting}
+              >
+                {deleting ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    삭제 중...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    삭제하기
+                  </>
+                )}
+              </Button>
             </div>
           </Card>
         </div>
