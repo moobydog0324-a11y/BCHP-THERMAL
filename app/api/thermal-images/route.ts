@@ -182,42 +182,48 @@ export async function POST(request: NextRequest) {
     const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
     console.log(`🔐 파일 해시: ${fileHash.substring(0, 16)}...`)
 
-    // 🚫 중복 파일 체크 (동일한 해시 + 파일명)
-    const duplicateCheck = await query(
-      `SELECT ti.image_id, ti.image_url, ti.capture_timestamp, p.section_category
-       FROM thermal_images ti
-       LEFT JOIN inspections i ON ti.inspection_id = i.inspection_id
-       LEFT JOIN pipes p ON i.pipe_id = p.pipe_id
-       LEFT JOIN image_metadata im ON ti.image_id = im.image_id
-       WHERE im.file_hash = $1
-       LIMIT 1`,
-      [fileHash]
-    )
-
-    if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
-      const duplicate = duplicateCheck.rows[0]
-      console.warn(`⚠️ 중복 파일 감지: 이미 업로드된 이미지입니다.`)
-      console.warn(`   기존 이미지 ID: ${duplicate.image_id}`)
-      console.warn(`   구역: ${duplicate.section_category || '알 수 없음'}`)
-      console.warn(`   촬영시간: ${duplicate.capture_timestamp}`)
-      
-      return NextResponse.json(
-        {
-          success: false,
-          error: '이미 업로드된 이미지입니다.',
-          duplicate: true,
-          existing_image: {
-            image_id: duplicate.image_id,
-            image_url: duplicate.image_url,
-            section_category: duplicate.section_category,
-            capture_timestamp: duplicate.capture_timestamp,
-          }
-        },
-        { status: 409 } // Conflict
+    // 🚫 중복 파일 체크 (file_hash 컬럼이 있을 경우에만)
+    try {
+      const duplicateCheck = await query(
+        `SELECT ti.image_id, ti.image_url, ti.capture_timestamp, p.section_category
+         FROM thermal_images ti
+         LEFT JOIN inspections i ON ti.inspection_id = i.inspection_id
+         LEFT JOIN pipes p ON i.pipe_id = p.pipe_id
+         LEFT JOIN image_metadata im ON ti.image_id = im.image_id
+         WHERE im.file_hash = $1
+         LIMIT 1`,
+        [fileHash]
       )
-    }
 
-    console.log('✅ 중복 체크 완료: 새로운 파일입니다.')
+      if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
+        const duplicate = duplicateCheck.rows[0]
+        console.warn(`⚠️ 중복 파일 감지: 이미 업로드된 이미지입니다.`)
+        console.warn(`   기존 이미지 ID: ${duplicate.image_id}`)
+        console.warn(`   구역: ${duplicate.section_category || '알 수 없음'}`)
+        console.warn(`   촬영시간: ${duplicate.capture_timestamp}`)
+        
+        return NextResponse.json(
+          {
+            success: false,
+            error: '이미 업로드된 이미지입니다.',
+            duplicate: true,
+            existing_image: {
+              image_id: duplicate.image_id,
+              image_url: duplicate.image_url,
+              section_category: duplicate.section_category,
+              capture_timestamp: duplicate.capture_timestamp,
+            }
+          },
+          { status: 409 } // Conflict
+        )
+      }
+
+      console.log('✅ 중복 체크 완료: 새로운 파일입니다.')
+    } catch (dupCheckError) {
+      // file_hash 컬럼이 없으면 중복 체크 건너뛰기
+      console.warn('⚠️ 중복 체크 실패 (file_hash 컬럼이 없을 수 있음):', dupCheckError)
+      console.log('💡 중복 체크를 건너뛰고 업로드를 진행합니다.')
+    }
 
     // 🔥 메타데이터 추출 (ExifTool)
     let metadata = null
