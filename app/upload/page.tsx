@@ -448,8 +448,8 @@ export default function UploadPage() {
               className="cursor-pointer border-border bg-card p-8 transition-all hover:border-primary hover:shadow-lg"
               onClick={() => setSelectedType("inspection")}
             >
-              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg bg-accent/10">
-                <ClipboardList className="h-8 w-8 text-accent" />
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-lg bg-primary/10">
+                <ClipboardList className="h-8 w-8 text-primary" />
               </div>
               <h3 className="mb-2 text-xl font-semibold text-card-foreground">점검 기록</h3>
               <p className="text-sm text-muted-foreground">열화상 점검 결과를 등록합니다</p>
