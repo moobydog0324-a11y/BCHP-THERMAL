@@ -78,9 +78,27 @@ export default function UploadPage() {
     }
   }
 
-  // 이미지 타입 자동 감지
-  const detectImageType = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename" }> => {
-    // 1. 파일명으로 먼저 판단 (빠른 감지)
+  // 파일명으로 빠르게 이미지 타입 추측 (메타데이터 분석 X)
+  const detectImageTypeByFilename = (fileName: string): { type: "thermal" | "real", detectedBy: "filename" } => {
+    const lowerName = fileName.toLowerCase()
+    
+    // 열화상 관련 키워드
+    if (lowerName.includes('ir_') || lowerName.includes('flir') || lowerName.includes('thermal') || lowerName.includes('_ir.')) {
+      return { type: "thermal", detectedBy: "filename" }
+    }
+    
+    // 실화상 관련 키워드
+    if (lowerName.includes('rgb') || lowerName.includes('real') || lowerName.includes('visible') || lowerName.includes('_rgb.')) {
+      return { type: "real", detectedBy: "filename" }
+    }
+
+    // 기본값: 열화상으로 추측 (나중에 메타데이터로 정확히 판단)
+    return { type: "thermal", detectedBy: "filename" }
+  }
+
+  // 이미지 타입 정밀 감지 (메타데이터 분석 포함)
+  const detectImageTypeWithMetadata = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename" }> => {
+    // 1. 파일명으로 먼저 판단
     const fileName = file.name.toLowerCase()
     if (fileName.includes('ir_') || fileName.includes('flir') || fileName.includes('thermal')) {
       console.log(`🔍 [${file.name}] 파일명으로 열화상 감지`)
@@ -140,42 +158,26 @@ export default function UploadPage() {
       setSelectedFiles(fileArray)
       setErrorMessage("") // 에러 메시지 초기화
       
-      // 초기 상태 설정 (분석 중)
-      setUploadResults(
-        fileArray.map((file) => ({
+      // 파일명으로 빠르게 타입 추측 (즉시 표시)
+      console.log(`⚡ 파일명으로 빠른 분류 시작...`)
+      
+      const quickResults = fileArray.map((file) => {
+        const detection = detectImageTypeByFilename(file.name)
+        return {
           fileName: file.name,
           status: "pending" as const,
-          imageType: undefined,
-          detectedBy: undefined,
-        }))
-      )
-      
-      console.log(`🔍 ${fileArray.length}개 파일의 이미지 타입 자동 감지 시작...`)
-      
-      // 각 파일의 이미지 타입 자동 감지
-      const detectionPromises = fileArray.map(async (file, index) => {
-        const detection = await detectImageType(file)
-        return { index, detection }
+          imageType: detection.type,
+          detectedBy: "filename" as const,
+        }
       })
       
-      const detectionResults = await Promise.all(detectionPromises)
-      
-      // 감지 결과 업데이트
-      setUploadResults((prev) =>
-        prev.map((result, index) => {
-          const detectionResult = detectionResults.find((r) => r.index === index)
-          return {
-            ...result,
-            imageType: detectionResult?.detection.type,
-            detectedBy: detectionResult?.detection.detectedBy,
-          }
-        })
-      )
+      setUploadResults(quickResults)
       
       // 통계 출력
-      const thermalCount = detectionResults.filter((r) => r.detection.type === "thermal").length
-      const realCount = detectionResults.filter((r) => r.detection.type === "real").length
-      console.log(`✅ 자동 감지 완료: 열화상 ${thermalCount}개, 실화상 ${realCount}개`)
+      const thermalCount = quickResults.filter((r) => r.imageType === "thermal").length
+      const realCount = quickResults.filter((r) => r.imageType === "real").length
+      console.log(`⚡ 빠른 분류 완료: 열화상 ${thermalCount}개, 실화상 ${realCount}개 (파일명 기준)`)
+      console.log(`💡 업로드 시 메타데이터로 정밀 분석이 진행됩니다.`)
       
       // 첫 번째 파일의 메타데이터로 촬영 시간 자동 설정
       if (fileArray.length > 0) {
@@ -415,13 +417,24 @@ export default function UploadPage() {
       const file = selectedFiles[i]
       const fileResult = uploadResults[i]
       
-      // 자동 감지된 이미지 타입 사용 (없으면 기본값 "thermal")
-      const detectedImageType = fileResult?.imageType || "thermal"
-      
-      // 상태 업데이트: uploading
+      // 상태 업데이트: 분석 중
       setUploadResults((prev) =>
         prev.map((result, idx) =>
           idx === i ? { ...result, status: "uploading" } : result
+        )
+      )
+      
+      // 업로드 직전에 메타데이터로 정밀 분석
+      console.log(`🔍 [${i + 1}/${selectedFiles.length}] ${file.name} 정밀 분석 중...`)
+      const preciseDetection = await detectImageTypeWithMetadata(file)
+      
+      // 분석 결과 업데이트
+      const detectedImageType = preciseDetection.type
+      const detectionMethod = preciseDetection.detectedBy
+      
+      setUploadResults((prev) =>
+        prev.map((result, idx) =>
+          idx === i ? { ...result, imageType: detectedImageType, detectedBy: detectionMethod } : result
         )
       )
 
@@ -436,7 +449,7 @@ export default function UploadPage() {
         }
         formData.append("notes", notes)
         
-        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${file.name} 업로드 시작 - 타입: ${detectedImageType} (${fileResult?.detectedBy || '자동'})`)
+        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${file.name} 업로드 시작 - 타입: ${detectedImageType} (${detectionMethod})`)
         
         const response = await fetch("/api/thermal-images", {
           method: "POST",
@@ -994,8 +1007,9 @@ export default function UploadPage() {
                     <div className="mt-2 rounded-lg bg-blue-500/10 p-3">
                       <p className="text-xs text-blue-600">
                         <span className="font-semibold">✨ 자동 분류 기능</span><br />
-                        파일의 메타데이터와 파일명을 분석하여 자동으로 열화상/실화상을 구분합니다.<br />
-                        잘못 분류된 경우 '변경' 버튼으로 수정할 수 있습니다.
+                        • 파일 선택 시: 파일명으로 빠르게 분류 (즉시 표시)<br />
+                        • 업로드 진행 시: 메타데이터로 정밀 분석 (자동 보정)<br />
+                        • 잘못 분류된 경우 '변경' 버튼으로 수동 수정 가능
                       </p>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
