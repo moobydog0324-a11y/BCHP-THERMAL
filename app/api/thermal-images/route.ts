@@ -174,6 +174,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 🔍 파일 해시 계산 (중복 체크용)
+    console.log('🔐 파일 해시 계산 중...')
+    const fileBuffer = await imageFile.arrayBuffer()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    console.log(`🔐 파일 해시: ${fileHash.substring(0, 16)}...`)
+
+    // 🚫 중복 파일 체크 (동일한 해시 + 파일명)
+    const duplicateCheck = await query(
+      `SELECT ti.image_id, ti.image_url, ti.capture_timestamp, p.section_category
+       FROM thermal_images ti
+       LEFT JOIN inspections i ON ti.inspection_id = i.inspection_id
+       LEFT JOIN pipes p ON i.pipe_id = p.pipe_id
+       LEFT JOIN image_metadata im ON ti.image_id = im.image_id
+       WHERE im.file_hash = $1
+       LIMIT 1`,
+      [fileHash]
+    )
+
+    if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
+      const duplicate = duplicateCheck.rows[0]
+      console.warn(`⚠️ 중복 파일 감지: 이미 업로드된 이미지입니다.`)
+      console.warn(`   기존 이미지 ID: ${duplicate.image_id}`)
+      console.warn(`   구역: ${duplicate.section_category || '알 수 없음'}`)
+      console.warn(`   촬영시간: ${duplicate.capture_timestamp}`)
+      
+      return NextResponse.json(
+        {
+          success: false,
+          error: '이미 업로드된 이미지입니다.',
+          duplicate: true,
+          existing_image: {
+            image_id: duplicate.image_id,
+            image_url: duplicate.image_url,
+            section_category: duplicate.section_category,
+            capture_timestamp: duplicate.capture_timestamp,
+          }
+        },
+        { status: 409 } // Conflict
+      )
+    }
+
+    console.log('✅ 중복 체크 완료: 새로운 파일입니다.')
+
     // 🔥 메타데이터 추출 (ExifTool)
     let metadata = null
     let thermal_data = null
@@ -277,24 +322,39 @@ export async function POST(request: NextRequest) {
       ]
     )
 
-    // 🔥 메타데이터를 별도 테이블에 저장
+    // 🔥 메타데이터를 별도 테이블에 저장 (파일 해시 포함)
     if (metadata && result.rows[0]) {
       try {
         await query(
-          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json, created_at, updated_at)
-           VALUES ($1, $2, $3, NOW(), NOW())
+          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json, file_hash, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, NOW(), NOW())
            ON CONFLICT (image_id) DO UPDATE 
-           SET metadata_json = $2, thermal_data_json = $3, updated_at = NOW()`,
+           SET metadata_json = $2, thermal_data_json = $3, file_hash = $4, updated_at = NOW()`,
           [
             result.rows[0].image_id,
             JSON.stringify(metadata),
             JSON.stringify(thermal_data),
+            fileHash,
           ]
         )
         console.log(`✅ 메타데이터 DB 저장 완료 (image_id: ${result.rows[0].image_id})`)
       } catch (metaError) {
         // 테이블이 없으면 경고만 출력 (업로드는 성공)
         console.warn('⚠️ 메타데이터 저장 실패 (image_metadata 테이블이 없을 수 있음):', metaError)
+      }
+    } else if (result.rows[0]) {
+      // 메타데이터가 없어도 파일 해시는 저장
+      try {
+        await query(
+          `INSERT INTO image_metadata (image_id, file_hash, created_at, updated_at)
+           VALUES ($1, $2, NOW(), NOW())
+           ON CONFLICT (image_id) DO UPDATE 
+           SET file_hash = $2, updated_at = NOW()`,
+          [result.rows[0].image_id, fileHash]
+        )
+        console.log(`✅ 파일 해시 DB 저장 완료 (메타데이터 없음)`)
+      } catch (hashError) {
+        console.warn('⚠️ 파일 해시 저장 실패:', hashError)
       }
     }
 

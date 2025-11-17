@@ -474,11 +474,29 @@ export default function UploadPage() {
 
         console.log(`📥 [${file.name}] 서버 응답: ${response.status} ${response.statusText}`)
         
+        const result = await response.json()
+
+        // 중복 파일 체크 (409 Conflict)
+        if (response.status === 409 && result.duplicate) {
+          console.warn(`⚠️ [${file.name}] 중복 파일: 이미 업로드된 이미지입니다.`)
+          console.warn(`   기존 이미지 ID: ${result.existing_image?.image_id}`)
+          console.warn(`   구역: ${result.existing_image?.section_category}`)
+          
+          errorCount++
+          setUploadResults((prev) =>
+            prev.map((r, idx) =>
+              idx === i
+                ? { ...r, status: "error", message: "⚠️ 중복: 이미 업로드됨" }
+                : r
+            )
+          )
+          continue
+        }
+        
         if (!response.ok) {
           throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`)
         }
         
-        const result = await response.json()
         console.log(`✅ [${file.name}] 업로드 성공:`, result)
 
         if (result.success) {
