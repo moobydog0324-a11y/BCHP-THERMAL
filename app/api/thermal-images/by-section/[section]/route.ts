@@ -102,10 +102,24 @@ export async function GET(
         }
       }
 
-      // 온도 정보 추출 (카메라 기본 설정값 제외)
+      // 온도 정보 추출 - 실제 측정 온도 우선 사용
+      const actualTempStats = thermalData?.actual_temp_stats
       const temperatureInfo = {
-        range_min: thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin || null,
-        range_max: thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax || null,
+        // 실제 측정 온도가 있으면 사용, 없으면 카메라 설정값 사용
+        range_min: actualTempStats?.min_temp 
+          ? `${actualTempStats.min_temp.toFixed(1)}°C`
+          : thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin || null,
+        range_max: actualTempStats?.max_temp 
+          ? `${actualTempStats.max_temp.toFixed(1)}°C`
+          : thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax || null,
+        avg_temp: actualTempStats?.avg_temp 
+          ? `${actualTempStats.avg_temp.toFixed(1)}°C`
+          : null,
+        median_temp: actualTempStats?.median_temp 
+          ? `${actualTempStats.median_temp.toFixed(1)}°C`
+          : null,
+        // 원본 통계 데이터도 포함
+        actual_temp_stats: actualTempStats || null,
       }
 
         // 기본 이미지 정보 + GPS + 온도 + 전체 메타데이터

@@ -8,13 +8,16 @@ import { Card } from "@/components/ui/card"
 import { 
   Activity, 
   ArrowLeft, 
-  MapPin, 
   Thermometer, 
   Calendar,
   Camera,
   Image as ImageIcon,
   Filter,
-  X
+  X,
+  CheckCircle2,
+  AlertTriangle,
+  AlertOctagon,
+  Info
 } from "lucide-react"
 
 type ThermalImage = {
@@ -38,6 +41,15 @@ type ThermalImage = {
   temperature: {
     range_min: string | null
     range_max: string | null
+    avg_temp: string | null
+    median_temp: string | null
+    actual_temp_stats: {
+      min_temp: number
+      max_temp: number
+      avg_temp: number
+      median_temp: number
+      pixel_count: number
+    } | null
     atmospheric: string | null
     humidity: string | null
   }
@@ -123,6 +135,46 @@ export default function DataManagementPage() {
     return (size / 1024 / 1024).toFixed(2) + ' MB'
   }
 
+  // 온도 경고 레벨 계산
+  const getTempWarningLevel = (maxTemp: string | null) => {
+    if (!maxTemp) return null
+    const temp = parseFloat(maxTemp.replace('°C', '').trim())
+    
+    if (temp < 40) {
+      return { 
+        level: 'normal', 
+        label: '정상', 
+        color: 'text-green-600', 
+        bgColor: 'bg-green-500/10',
+        icon: CheckCircle2 
+      }
+    } else if (temp >= 40 && temp < 60) {
+      return { 
+        level: 'observation', 
+        label: '관찰', 
+        color: 'text-yellow-600', 
+        bgColor: 'bg-yellow-500/10',
+        icon: Info 
+      }
+    } else if (temp >= 60 && temp < 70) {
+      return { 
+        level: 'caution', 
+        label: '주의', 
+        color: 'text-orange-600', 
+        bgColor: 'bg-orange-500/10',
+        icon: AlertTriangle 
+      }
+    } else {
+      return { 
+        level: 'warning', 
+        label: '경고', 
+        color: 'text-red-600', 
+        bgColor: 'bg-red-500/10',
+        icon: AlertOctagon 
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -160,7 +212,7 @@ export default function DataManagementPage() {
         {/* 통계 및 필터 */}
         <div className="mb-6 space-y-4">
           {/* 통계 카드 */}
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-5">
             <Card className="border-border bg-card p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -176,12 +228,15 @@ export default function DataManagementPage() {
             <Card className="border-border bg-card p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-500/10">
-                  <MapPin className="h-5 w-5 text-green-600" />
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">GPS 정보 있음</p>
+                  <p className="text-xs text-muted-foreground">정상</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => img.gps).length}
+                    {images.filter(img => {
+                      const level = getTempWarningLevel(img.temperature.range_max)
+                      return level?.level === 'normal'
+                    }).length}
                   </p>
                 </div>
               </div>
@@ -189,13 +244,16 @@ export default function DataManagementPage() {
 
             <Card className="border-border bg-card p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
-                  <Thermometer className="h-5 w-5 text-blue-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-yellow-500/10">
+                  <Info className="h-5 w-5 text-yellow-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">온도 정보 있음</p>
+                  <p className="text-xs text-muted-foreground">관찰 (40-60°C)</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => img.temperature.range_max).length}
+                    {images.filter(img => {
+                      const level = getTempWarningLevel(img.temperature.range_max)
+                      return level?.level === 'observation'
+                    }).length}
                   </p>
                 </div>
               </div>
@@ -204,11 +262,33 @@ export default function DataManagementPage() {
             <Card className="border-border bg-card p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500/10">
-                  <Filter className="h-5 w-5 text-orange-600" />
+                  <AlertTriangle className="h-5 w-5 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">필터된 결과</p>
-                  <p className="text-2xl font-bold text-card-foreground">{filteredImages.length}</p>
+                  <p className="text-xs text-muted-foreground">주의 (60-70°C)</p>
+                  <p className="text-2xl font-bold text-card-foreground">
+                    {images.filter(img => {
+                      const level = getTempWarningLevel(img.temperature.range_max)
+                      return level?.level === 'caution'
+                    }).length}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-border bg-card p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                  <AlertOctagon className="h-5 w-5 text-red-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">경고 (70°C+)</p>
+                  <p className="text-2xl font-bold text-card-foreground">
+                    {images.filter(img => {
+                      const level = getTempWarningLevel(img.temperature.range_max)
+                      return level?.level === 'warning'
+                    }).length}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -278,48 +358,59 @@ export default function DataManagementPage() {
                   <div className="absolute left-2 top-2 rounded bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
                     {img.section_category}
                   </div>
+                  {(() => {
+                    const warningLevel = getTempWarningLevel(img.temperature.range_max)
+                    if (!warningLevel) return null
+                    const IconComponent = warningLevel.icon
+                    return (
+                      <div className={`absolute right-2 top-2 rounded-lg ${warningLevel.bgColor} px-2 py-1 flex items-center gap-1`}>
+                        <IconComponent className={`h-4 w-4 ${warningLevel.color}`} />
+                        <span className={`text-xs font-semibold ${warningLevel.color}`}>
+                          {warningLevel.label}
+                        </span>
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* 메타데이터 요약 */}
                 <div className="p-4 space-y-3">
-                  {/* ID 및 타임스탬프 */}
+                  {/* ID 및 타임스탬프 with 경고 레벨 */}
                   <div>
                     <div className="text-xs text-muted-foreground">ID: {img.image_id}</div>
-                    <div className="flex items-center gap-1 text-sm font-medium text-card-foreground">
-                      <Calendar className="h-3 w-3" />
-                      {formatDateTime(img.capture_timestamp)}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 text-sm font-medium text-card-foreground">
+                        <Calendar className="h-3 w-3" />
+                        {formatDateTime(img.capture_timestamp)}
+                      </div>
+                      {(() => {
+                        const warningLevel = getTempWarningLevel(img.temperature.range_max)
+                        if (!warningLevel) return null
+                        const IconComponent = warningLevel.icon
+                        return (
+                          <div className={`flex items-center gap-1 rounded px-2 py-0.5 ${warningLevel.bgColor}`}>
+                            <IconComponent className={`h-3 w-3 ${warningLevel.color}`} />
+                            <span className={`text-xs font-semibold ${warningLevel.color}`}>
+                              {warningLevel.label}
+                            </span>
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 
-                  {/* GPS */}
-                  {img.gps && (
-                    <div className="rounded-lg bg-muted/50 p-2">
-                      <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        GPS 위치
-                      </div>
-                      <div className="text-xs font-mono">{img.gps.formatted}</div>
-                      {img.gps.altitude && (
-                        <div className="text-xs text-muted-foreground">고도: {img.gps.altitude}</div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 온도 */}
+                  {/* 온도 - 메타데이터에서 추출한 실제 온도 */}
                   {img.temperature.range_max && (
-                    <div className="rounded-lg bg-blue-500/5 p-2">
-                      <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600">
+                    <div className={`rounded-lg p-3 ${getTempWarningLevel(img.temperature.range_max)?.bgColor || 'bg-muted/50'}`}>
+                      <div className="mb-1 flex items-center gap-1 text-xs font-semibold">
                         <Thermometer className="h-3 w-3" />
-                        온도 범위
+                        <span className={getTempWarningLevel(img.temperature.range_max)?.color || 'text-muted-foreground'}>
+                          실제 온도 범위
+                        </span>
                       </div>
-                      <div className="text-sm font-semibold">
+                      <div className={`text-lg font-bold ${getTempWarningLevel(img.temperature.range_max)?.color || 'text-card-foreground'}`}>
                         {img.temperature.range_min} ~ {img.temperature.range_max}
                       </div>
-                      {img.temperature.atmospheric && (
-                        <div className="text-xs text-muted-foreground">
-                          대기: {img.temperature.atmospheric}
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -401,41 +492,92 @@ export default function DataManagementPage() {
                 </div>
               </div>
 
-              {/* GPS 정보 */}
-              {selectedImage.gps && (
-                <div>
-                  <h3 className="mb-3 text-lg font-semibold text-card-foreground">
-                    📍 GPS 위치 정보
-                  </h3>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <InfoItem label="위도" value={selectedImage.gps.latitude.toFixed(6)} />
-                    <InfoItem label="경도" value={selectedImage.gps.longitude.toFixed(6)} />
-                    <InfoItem 
-                      label="좌표 표시" 
-                      value={selectedImage.gps.formatted} 
-                      className="md:col-span-2"
-                    />
-                    {selectedImage.gps.altitude && (
-                      <InfoItem label="고도" value={selectedImage.gps.altitude} />
-                    )}
-                  </div>
-                </div>
-              )}
-
               {/* 온도 정보 */}
-              {selectedImage.temperature.range_max && (
-                <div>
-                  <h3 className="mb-3 text-lg font-semibold text-card-foreground">
-                    🌡️ 온도 정보
-                  </h3>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <InfoItem label="최저 온도" value={selectedImage.temperature.range_min || 'N/A'} />
-                    <InfoItem label="최고 온도" value={selectedImage.temperature.range_max || 'N/A'} />
-                    <InfoItem label="대기 온도" value={selectedImage.temperature.atmospheric || 'N/A'} />
-                    <InfoItem label="습도" value={selectedImage.temperature.humidity || 'N/A'} />
+              {selectedImage.temperature.range_max && (() => {
+                const warningLevel = getTempWarningLevel(selectedImage.temperature.range_max)
+                const IconComponent = warningLevel?.icon || Thermometer
+                const actualStats = selectedImage.temperature.actual_temp_stats
+                
+                return (
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-card-foreground">
+                        🌡️ 온도 분석 {actualStats && <span className="text-sm text-green-600">(실제 측정값)</span>}
+                      </h3>
+                      {warningLevel && (
+                        <div className={`flex items-center gap-2 rounded-lg ${warningLevel.bgColor} px-3 py-1.5`}>
+                          <IconComponent className={`h-5 w-5 ${warningLevel.color}`} />
+                          <span className={`text-sm font-semibold ${warningLevel.color}`}>
+                            {warningLevel.label}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className={`rounded-lg p-4 ${warningLevel?.bgColor || 'bg-muted/50'}`}>
+                        <div className="text-xs font-medium text-muted-foreground">최저 온도</div>
+                        <div className={`mt-1 text-2xl font-bold ${warningLevel?.color || 'text-card-foreground'}`}>
+                          {selectedImage.temperature.range_min || 'N/A'}
+                        </div>
+                      </div>
+                      <div className={`rounded-lg p-4 ${warningLevel?.bgColor || 'bg-muted/50'}`}>
+                        <div className="text-xs font-medium text-muted-foreground">최고 온도</div>
+                        <div className={`mt-1 text-2xl font-bold ${warningLevel?.color || 'text-card-foreground'}`}>
+                          {selectedImage.temperature.range_max || 'N/A'}
+                        </div>
+                      </div>
+                      {selectedImage.temperature.avg_temp && (
+                        <div className={`rounded-lg p-4 ${warningLevel?.bgColor || 'bg-muted/50'}`}>
+                          <div className="text-xs font-medium text-muted-foreground">평균 온도</div>
+                          <div className={`mt-1 text-2xl font-bold ${warningLevel?.color || 'text-card-foreground'}`}>
+                            {selectedImage.temperature.avg_temp}
+                          </div>
+                        </div>
+                      )}
+                      {selectedImage.temperature.median_temp && (
+                        <div className={`rounded-lg p-4 ${warningLevel?.bgColor || 'bg-muted/50'}`}>
+                          <div className="text-xs font-medium text-muted-foreground">중앙값 온도</div>
+                          <div className={`mt-1 text-2xl font-bold ${warningLevel?.color || 'text-card-foreground'}`}>
+                            {selectedImage.temperature.median_temp}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {actualStats && (
+                      <div className="mt-3 rounded-lg bg-green-500/10 p-3 border border-green-500/20">
+                        <div className="text-xs text-green-700 dark:text-green-400">
+                          ✓ 이 온도는 FLIR 전문 라이브러리로 추출한 실제 측정값입니다. 
+                          총 {actualStats.pixel_count.toLocaleString()}개 픽셀을 분석했습니다.
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* 온도 범위 안내 */}
+                    <div className="mt-4 rounded-lg bg-muted/30 p-4">
+                      <h4 className="mb-2 text-sm font-semibold text-card-foreground">📊 온도 경고 기준</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          <span>정상: &lt;40°C</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Info className="h-4 w-4 text-yellow-600" />
+                          <span>관찰: 40-60°C</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-orange-600" />
+                          <span>주의: 60-70°C</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <AlertOctagon className="h-4 w-4 text-red-600" />
+                          <span>경고: ≥70°C</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* 링크 */}
               <div className="flex gap-3">
