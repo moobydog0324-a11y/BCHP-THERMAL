@@ -12,6 +12,8 @@ type UploadResult = {
   fileName: string
   status: "pending" | "uploading" | "success" | "error"
   message?: string
+  imageType?: "thermal" | "real" // 자동 감지된 이미지 타입
+  detectedBy?: "metadata" | "filename" | "manual" // 감지 방법
 }
 
 type SectionCategory = 'A-1' | 'A-2' | 'B-1' | 'B-2' | 'C-1' | 'C-2' | 'D-1' | 'D-2' | 'E-1' | 'E-2' | 'F-1' | 'F-2' | 'G-1' | 'G-2'
@@ -76,20 +78,86 @@ export default function UploadPage() {
     }
   }
 
+  // 이미지 타입 자동 감지
+  const detectImageType = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename" }> => {
+    // 1. 파일명으로 먼저 판단 (빠른 감지)
+    const fileName = file.name.toLowerCase()
+    if (fileName.includes('ir_') || fileName.includes('flir') || fileName.includes('thermal')) {
+      console.log(`🔍 [${file.name}] 파일명으로 열화상 감지`)
+      return { type: "thermal", detectedBy: "filename" }
+    }
+    if (fileName.includes('rgb') || fileName.includes('real') || fileName.includes('visible')) {
+      console.log(`🔍 [${file.name}] 파일명으로 실화상 감지`)
+      return { type: "real", detectedBy: "filename" }
+    }
+
+    // 2. 메타데이터로 정확한 판단
+    const metadata = await analyzeMetadata(file)
+    if (metadata) {
+      // FLIR 카메라 모델 확인
+      const cameraModel = metadata.Model || metadata.Make || ''
+      if (cameraModel.toLowerCase().includes('flir')) {
+        console.log(`🔍 [${file.name}] 메타데이터로 열화상 감지 (카메라: ${cameraModel})`)
+        return { type: "thermal", detectedBy: "metadata" }
+      }
+
+      // 열화상 관련 데이터 존재 여부 확인
+      if (metadata.CameraTemperatureRangeMax || metadata.PlanckR1 || metadata.actual_temp_stats) {
+        console.log(`🔍 [${file.name}] 메타데이터로 열화상 감지 (온도 데이터 존재)`)
+        return { type: "thermal", detectedBy: "metadata" }
+      }
+    }
+
+    // 3. 기본값: 실화상으로 분류
+    console.log(`🔍 [${file.name}] 기본값으로 실화상 분류`)
+    return { type: "real", detectedBy: "filename" }
+  }
+
   // 파일 선택 핸들러
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
       const fileArray = Array.from(files)
       setSelectedFiles(fileArray)
+      
+      // 초기 상태 설정 (분석 중)
       setUploadResults(
         fileArray.map((file) => ({
           fileName: file.name,
           status: "pending" as const,
+          imageType: undefined,
+          detectedBy: undefined,
         }))
       )
       
-      // 첫 번째 파일의 메타데이터 자동 분석 (미리보기)
+      console.log(`🔍 ${fileArray.length}개 파일의 이미지 타입 자동 감지 시작...`)
+      
+      // 각 파일의 이미지 타입 자동 감지
+      const detectionPromises = fileArray.map(async (file, index) => {
+        const detection = await detectImageType(file)
+        return { index, detection }
+      })
+      
+      const detectionResults = await Promise.all(detectionPromises)
+      
+      // 감지 결과 업데이트
+      setUploadResults((prev) =>
+        prev.map((result, index) => {
+          const detectionResult = detectionResults.find((r) => r.index === index)
+          return {
+            ...result,
+            imageType: detectionResult?.detection.type,
+            detectedBy: detectionResult?.detection.detectedBy,
+          }
+        })
+      )
+      
+      // 통계 출력
+      const thermalCount = detectionResults.filter((r) => r.detection.type === "thermal").length
+      const realCount = detectionResults.filter((r) => r.detection.type === "real").length
+      console.log(`✅ 자동 감지 완료: 열화상 ${thermalCount}개, 실화상 ${realCount}개`)
+      
+      // 첫 번째 파일의 메타데이터로 촬영 시간 자동 설정
       if (fileArray.length > 0) {
         const metadata = await analyzeMetadata(fileArray[0])
         if (metadata) {
@@ -279,7 +347,6 @@ export default function UploadPage() {
     setErrorMessage("")
 
     const form = e.currentTarget
-    const image_type = (form.elements.namedItem("image_type") as HTMLSelectElement).value
     const notes = (form.elements.namedItem("notes") as HTMLTextAreaElement).value
     
     // 구간 선택 검증
@@ -315,6 +382,10 @@ export default function UploadPage() {
     // 각 파일을 순차적으로 업로드
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i]
+      const fileResult = uploadResults[i]
+      
+      // 자동 감지된 이미지 타입 사용 (없으면 기본값 "thermal")
+      const detectedImageType = fileResult?.imageType || "thermal"
       
       // 상태 업데이트: uploading
       setUploadResults((prev) =>
@@ -326,13 +397,15 @@ export default function UploadPage() {
       try {
         const formData = new FormData()
         formData.append("inspection_id", inspectionId.toString())
-        formData.append("image_type", image_type)
+        formData.append("image_type", detectedImageType) // 자동 감지된 타입 사용
         formData.append("image_file", file)
         // 촬영 시간이 있으면 전달, 없으면 서버에서 메타데이터 또는 현재 시간 사용
         if (captureTimestamp) {
           formData.append("capture_timestamp", captureTimestamp)
         }
         formData.append("notes", notes)
+        
+        console.log(`📤 [${file.name}] 업로드 시작 - 타입: ${detectedImageType} (${fileResult?.detectedBy})`)
 
         console.log(`📤 파일 업로드 시작: ${file.name}`)
         
@@ -833,25 +906,6 @@ export default function UploadPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-foreground">
-                      이미지 타입 <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      name="image_type"
-                      required
-                      value={imageType}
-                      onChange={(e) => setImageType(e.target.value as "thermal" | "real")}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none"
-                    >
-                      <option value="thermal">🌡️ 열화상 (Thermal)</option>
-                      <option value="real">📷 실화상 (Real)</option>
-                    </select>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      이미지 타입에 따라 별도 폴더에 분류 저장됩니다
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-foreground">
                       이미지 파일 (다중 선택 가능) <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -863,6 +917,13 @@ export default function UploadPage() {
                       onChange={handleFileSelect}
                       className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
                     />
+                    <div className="mt-2 rounded-lg bg-blue-500/10 p-3">
+                      <p className="text-xs text-blue-600">
+                        <span className="font-semibold">✨ 자동 분류 기능</span><br />
+                        파일의 메타데이터와 파일명을 분석하여 자동으로 열화상/실화상을 구분합니다.<br />
+                        잘못 분류된 경우 '변경' 버튼으로 수정할 수 있습니다.
+                      </p>
+                    </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       📎 여러 파일 선택 가능 | JPG, PNG, TIFF 형식 지원 (각 파일 최대 50MB)
                     </p>
@@ -874,6 +935,12 @@ export default function UploadPage() {
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold text-foreground">
                           📋 선택된 파일 ({selectedFiles.length}개)
+                          {uploadResults.some(r => r.imageType) && (
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              (🌡️ 열화상 {uploadResults.filter(r => r.imageType === "thermal").length}개 
+                              / 📷 실화상 {uploadResults.filter(r => r.imageType === "real").length}개)
+                            </span>
+                          )}
                         </div>
                         {!isSubmitting && (
                           <Button
@@ -903,8 +970,31 @@ export default function UploadPage() {
                               <div className="flex flex-1 items-center gap-3">
                                 <FileImage className="h-5 w-5 flex-shrink-0 text-primary" />
                                 <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-medium text-foreground">
-                                    {file.name}
+                                  <div className="flex items-center gap-2">
+                                    <div className="truncate text-sm font-medium text-foreground">
+                                      {file.name}
+                                    </div>
+                                    {result?.imageType && (
+                                      <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                        result.imageType === "thermal" 
+                                          ? "bg-red-500/10 text-red-600" 
+                                          : "bg-blue-500/10 text-blue-600"
+                                      }`}>
+                                        {result.imageType === "thermal" ? "🌡️ 열화상" : "📷 실화상"}
+                                        {result.detectedBy === "metadata" && (
+                                          <span className="text-[10px] opacity-70">(메타데이터)</span>
+                                        )}
+                                        {result.detectedBy === "filename" && (
+                                          <span className="text-[10px] opacity-70">(파일명)</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {!result?.imageType && (
+                                      <div className="flex items-center gap-1 rounded-full bg-gray-500/10 px-2 py-0.5 text-xs text-gray-600">
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <span>분석 중...</span>
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="text-xs text-muted-foreground">
                                     {fileSizeMB} MB
@@ -915,15 +1005,36 @@ export default function UploadPage() {
                               {/* 상태 표시 */}
                               <div className="ml-3 flex items-center gap-2">
                                 {result?.status === "pending" && !isSubmitting && (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removeFile(index)}
-                                    className="h-7 w-7 p-0"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
+                                  <>
+                                    {result?.imageType && (
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setUploadResults((prev) =>
+                                            prev.map((r, idx) =>
+                                              idx === index
+                                                ? { ...r, imageType: r.imageType === "thermal" ? "real" : "thermal", detectedBy: "manual" }
+                                                : r
+                                            )
+                                          )
+                                        }}
+                                        className="h-7 text-xs"
+                                      >
+                                        변경
+                                      </Button>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => removeFile(index)}
+                                      className="h-7 w-7 p-0"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </>
                                 )}
                                 {result?.status === "uploading" && (
                                   <Loader2 className="h-5 w-5 animate-spin text-primary" />
