@@ -82,34 +82,50 @@ export default function UploadPage() {
   const detectImageTypeByFilename = (fileName: string): { type: "thermal" | "real", detectedBy: "filename" } => {
     const lowerName = fileName.toLowerCase()
     
-    // 열화상 관련 키워드
+    // 확장자 패턴 확인: 파일명R.jpg = 열화상, 파일명.jpg = 실화상
+    // 예: DJI_0001R.jpg (열화상), DJI_0001.jpg (실화상)
+    if (/r\.(jpg|jpeg|png|tiff|tif)$/i.test(lowerName)) {
+      console.log(`⚡ [${fileName}] 확장자 패턴으로 열화상 감지 (파일명R.jpg)`)
+      return { type: "thermal", detectedBy: "filename" }
+    }
+    
+    // 기타 열화상 관련 키워드 (FLIR 카메라 등)
     if (lowerName.includes('ir_') || lowerName.includes('flir') || lowerName.includes('thermal') || lowerName.includes('_ir.')) {
+      console.log(`⚡ [${fileName}] 키워드로 열화상 감지`)
       return { type: "thermal", detectedBy: "filename" }
     }
     
     // 실화상 관련 키워드
     if (lowerName.includes('rgb') || lowerName.includes('real') || lowerName.includes('visible') || lowerName.includes('_rgb.')) {
+      console.log(`⚡ [${fileName}] 키워드로 실화상 감지`)
       return { type: "real", detectedBy: "filename" }
     }
 
-    // 기본값: 열화상으로 추측 (나중에 메타데이터로 정확히 판단)
-    return { type: "thermal", detectedBy: "filename" }
+    // 기본값: R 없이 .jpg로 끝나면 실화상
+    console.log(`⚡ [${fileName}] 기본값으로 실화상 분류 (R 없음)`)
+    return { type: "real", detectedBy: "filename" }
   }
 
   // 이미지 타입 정밀 감지 (메타데이터 분석 포함)
   const detectImageTypeWithMetadata = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename" }> => {
-    // 1. 파일명으로 먼저 판단
+    // 1. 확장자 패턴 확인: 파일명R.jpg = 열화상, 파일명.jpg = 실화상
     const fileName = file.name.toLowerCase()
+    if (/r\.(jpg|jpeg|png|tiff|tif)$/i.test(fileName)) {
+      console.log(`🔍 [${file.name}] 확장자 패턴으로 열화상 확정 (파일명R.jpg)`)
+      return { type: "thermal", detectedBy: "filename" }
+    }
+    
+    // 2. 기타 키워드 확인
     if (fileName.includes('ir_') || fileName.includes('flir') || fileName.includes('thermal')) {
-      console.log(`🔍 [${file.name}] 파일명으로 열화상 감지`)
+      console.log(`🔍 [${file.name}] 키워드로 열화상 감지`)
       return { type: "thermal", detectedBy: "filename" }
     }
     if (fileName.includes('rgb') || fileName.includes('real') || fileName.includes('visible')) {
-      console.log(`🔍 [${file.name}] 파일명으로 실화상 감지`)
+      console.log(`🔍 [${file.name}] 키워드로 실화상 감지`)
       return { type: "real", detectedBy: "filename" }
     }
 
-    // 2. 메타데이터로 정확한 판단
+    // 3. 메타데이터로 정확한 판단
     const metadata = await analyzeMetadata(file)
     if (metadata) {
       // FLIR 카메라 모델 확인
@@ -126,8 +142,8 @@ export default function UploadPage() {
       }
     }
 
-    // 3. 기본값: 실화상으로 분류
-    console.log(`🔍 [${file.name}] 기본값으로 실화상 분류`)
+    // 4. 기본값: R 없이 일반 확장자면 실화상
+    console.log(`🔍 [${file.name}] 기본값으로 실화상 분류 (R 없음)`)
     return { type: "real", detectedBy: "filename" }
   }
 
