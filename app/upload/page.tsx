@@ -441,7 +441,8 @@ export default function UploadPage() {
       )
       
       // 업로드 직전에 메타데이터로 정밀 분석
-      console.log(`🔍 [${i + 1}/${selectedFiles.length}] ${file.name} 정밀 분석 중...`)
+      const fileName = file?.name || uploadResults[i]?.fileName || `파일 ${i + 1}`
+      console.log(`🔍 [${i + 1}/${selectedFiles.length}] ${fileName} 정밀 분석 중...`)
       const preciseDetection = await detectImageTypeWithMetadata(file)
       
       // 분석 결과 업데이트
@@ -465,20 +466,20 @@ export default function UploadPage() {
         }
         formData.append("notes", notes)
         
-        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${file.name} 업로드 시작 - 타입: ${detectedImageType} (${detectionMethod})`)
+        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${fileName} 업로드 시작 - 타입: ${detectedImageType} (${detectionMethod})`)
         
         const response = await fetch("/api/thermal-images", {
           method: "POST",
           body: formData,
         })
 
-        console.log(`📥 [${file.name}] 서버 응답: ${response.status} ${response.statusText}`)
+        console.log(`📥 [${fileName}] 서버 응답: ${response.status} ${response.statusText}`)
         
         const result = await response.json()
 
         // 중복 파일 체크 (409 Conflict)
         if (response.status === 409 && result.duplicate) {
-          console.warn(`⚠️ [${file.name}] 중복 파일: 이미 업로드된 이미지입니다.`)
+          console.warn(`⚠️ [${fileName}] 중복 파일: 이미 업로드된 이미지입니다.`)
           console.warn(`   기존 이미지 ID: ${result.existing_image?.image_id}`)
           console.warn(`   구역: ${result.existing_image?.section_category}`)
           
@@ -497,7 +498,7 @@ export default function UploadPage() {
           throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`)
         }
         
-        console.log(`✅ [${file.name}] 업로드 성공:`, result)
+        console.log(`✅ [${fileName}] 업로드 성공:`, result)
 
         if (result.success) {
           successCount++
@@ -521,7 +522,7 @@ export default function UploadPage() {
       } catch (error) {
         errorCount++
         const errorMsg = error instanceof Error ? error.message : "알 수 없는 오류"
-        console.error(`❌ [${file.name}] 업로드 실패:`, errorMsg)
+        console.error(`❌ [${fileName}] 업로드 실패:`, errorMsg)
         console.error(`상세 오류 정보:`, error)
         
         // 네트워크 오류인지 확인
