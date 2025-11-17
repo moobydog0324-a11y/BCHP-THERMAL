@@ -117,8 +117,28 @@ export default function UploadPage() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
-      const fileArray = Array.from(files)
+      let fileArray = Array.from(files)
+      
+      // 이미지 파일만 필터링
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif']
+      fileArray = fileArray.filter((file) => {
+        const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+        return imageExtensions.includes(ext)
+      })
+      
+      if (fileArray.length === 0) {
+        setErrorMessage("선택한 폴더/파일에 이미지가 없습니다. (JPG, PNG, TIFF 형식만 지원)")
+        return
+      }
+      
+      if (fileArray.length !== files.length) {
+        console.log(`⚠️ ${files.length - fileArray.length}개 파일 제외 (이미지가 아님)`)
+      }
+      
+      console.log(`📁 ${fileArray.length}개 이미지 파일 선택됨`)
+      
       setSelectedFiles(fileArray)
+      setErrorMessage("") // 에러 메시지 초기화
       
       // 초기 상태 설정 (분석 중)
       setUploadResults(
@@ -191,8 +211,19 @@ export default function UploadPage() {
 
   // 파일 제거
   const removeFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
-    setUploadResults((prev) => prev.filter((_, i) => i !== index))
+    const newFiles = selectedFiles.filter((_, i) => i !== index)
+    const newResults = uploadResults.filter((_, i) => i !== index)
+    
+    setSelectedFiles(newFiles)
+    setUploadResults(newResults)
+    
+    // 마지막 파일 제거 시 입력 필드 초기화
+    if (newFiles.length === 0) {
+      const fileInput = document.getElementById('file-input') as HTMLInputElement
+      const folderInput = document.getElementById('folder-input') as HTMLInputElement
+      if (fileInput) fileInput.value = ''
+      if (folderInput) folderInput.value = ''
+    }
   }
 
   // 구간 선택 및 점검 자동 생성
@@ -604,6 +635,11 @@ export default function UploadPage() {
                         setUploadResults([])
                         setSelectedSection(null)
                         setInspectionId(null)
+                        // 파일 입력 초기화
+                        const fileInput = document.getElementById('file-input') as HTMLInputElement
+                        const folderInput = document.getElementById('folder-input') as HTMLInputElement
+                        if (fileInput) fileInput.value = ''
+                        if (folderInput) folderInput.value = ''
                       }}
                     >
                       ➕ 더 업로드하기
@@ -906,17 +942,46 @@ export default function UploadPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-foreground">
-                      이미지 파일 (다중 선택 가능) <span className="text-red-500">*</span>
+                      이미지 파일/폴더 <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      name="image_file"
-                      type="file"
-                      multiple
-                      required
-                      accept="image/jpeg,image/jpg,image/png,image/tiff"
-                      onChange={handleFileSelect}
-                      className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
-                    />
+                    <div className="flex gap-2">
+                      {/* 파일 선택 */}
+                      <div className="flex-1">
+                        <input
+                          id="file-input"
+                          name="image_file"
+                          type="file"
+                          multiple
+                          required={selectedFiles.length === 0}
+                          accept="image/jpeg,image/jpg,image/png,image/tiff"
+                          onChange={handleFileSelect}
+                          className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
+                        />
+                      </div>
+                      {/* 폴더 선택 */}
+                      <div className="flex-shrink-0">
+                        <input
+                          id="folder-input"
+                          type="file"
+                          multiple
+                          // @ts-ignore - webkitdirectory is not in TypeScript types
+                          webkitdirectory=""
+                          directory=""
+                          accept="image/jpeg,image/jpg,image/png,image/tiff"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => document.getElementById('folder-input')?.click()}
+                          className="h-full whitespace-nowrap"
+                        >
+                          <Folder className="mr-2 h-4 w-4" />
+                          폴더 선택
+                        </Button>
+                      </div>
+                    </div>
                     <div className="mt-2 rounded-lg bg-blue-500/10 p-3">
                       <p className="text-xs text-blue-600">
                         <span className="font-semibold">✨ 자동 분류 기능</span><br />
@@ -925,7 +990,7 @@ export default function UploadPage() {
                       </p>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      📎 여러 파일 선택 가능 | JPG, PNG, TIFF 형식 지원 (각 파일 최대 50MB)
+                      📎 개별 파일 또는 폴더 전체 선택 가능 | JPG, PNG, TIFF 형식 지원 (각 파일 최대 50MB)
                     </p>
                   </div>
 
@@ -950,6 +1015,11 @@ export default function UploadPage() {
                             onClick={() => {
                               setSelectedFiles([])
                               setUploadResults([])
+                              // 파일 입력 초기화
+                              const fileInput = document.getElementById('file-input') as HTMLInputElement
+                              const folderInput = document.getElementById('folder-input') as HTMLInputElement
+                              if (fileInput) fileInput.value = ''
+                              if (folderInput) folderInput.value = ''
                             }}
                             className="h-7 text-xs"
                           >
