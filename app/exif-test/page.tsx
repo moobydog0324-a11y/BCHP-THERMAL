@@ -6,11 +6,57 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Activity, ArrowLeft, Upload, CheckCircle2, XCircle, FileImage, Loader2 } from "lucide-react"
 
+type FieldData = {
+  label: string
+  value: string | number
+  unit?: string
+  raw?: number
+  description?: string
+}
+
+type AtmosphericTransData = {
+  label: string
+  alpha1?: number
+  alpha2?: number
+  beta1?: number
+  beta2?: number
+  x?: number
+}
+
+type SectionDataValue = FieldData | {
+  warning?: string
+  note?: string
+  atmospheric_trans?: AtmosphericTransData
+}
+
+type SectionData = {
+  title: string
+  priority: number
+  collapsed?: boolean
+  data: Record<string, SectionDataValue>
+}
+
 type AnalysisResult = {
   success: boolean
-  metadata?: any
-  thermal_data?: any
   filename?: string
+  processing_time?: number
+  sections?: Record<string, SectionData>
+  warnings?: string[]
+  has_raw_data?: boolean
+  _raw_metadata?: Record<string, any>
+  _raw_thermal_data?: Record<string, any>
+  error?: string
+}
+
+type FlaskStatus = {
+  success: boolean
+  flask_server?: string
+  flask_status?: {
+    status?: string
+    message?: string
+    exiftool_available?: boolean
+    flir_library?: string
+  }
   error?: string
 }
 
@@ -18,7 +64,7 @@ export default function ExifTestPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [result, setResult] = useState<AnalysisResult | null>(null)
-  const [flaskStatus, setFlaskStatus] = useState<any>(null)
+  const [flaskStatus, setFlaskStatus] = useState<FlaskStatus | null>(null)
 
   const checkFlaskServer = async () => {
     try {
@@ -214,8 +260,8 @@ export default function ExifTestPage() {
 
                   {/* 각 섹션 렌더링 */}
                   {Object.entries(result.sections)
-                    .sort(([, a]: any, [, b]: any) => (a.priority || 999) - (b.priority || 999))
-                    .map(([key, section]: any) => (
+                    .sort(([, a], [, b]) => (a.priority || 999) - (b.priority || 999))
+                    .map(([key, section]) => (
                       <details 
                         key={key} 
                         className="rounded-lg border border-border bg-muted/20 p-4"
@@ -225,28 +271,29 @@ export default function ExifTestPage() {
                           {section.title}
                         </summary>
                         <div className="mt-4 space-y-3">
-                          {section.data.warning && (
+                          {'warning' in section.data && typeof section.data.warning === 'string' && (
                             <div className="rounded-md bg-yellow-50 p-3 text-sm text-yellow-800">
                               {section.data.warning}
                             </div>
                           )}
-                          {section.data.note && (
+                          {'note' in section.data && typeof section.data.note === 'string' && (
                             <div className="rounded-md bg-blue-50 p-3 text-sm text-blue-800">
                               💡 {section.data.note}
                             </div>
                           )}
                           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                             {Object.entries(section.data)
-                              .filter(([k]: any) => k !== 'warning' && k !== 'note' && k !== 'atmospheric_trans')
-                              .map(([fieldKey, fieldData]: any) => {
-                                if (!fieldData || typeof fieldData !== 'object' || !fieldData.label) return null
+                              .filter(([k]) => k !== 'warning' && k !== 'note' && k !== 'atmospheric_trans')
+                              .map(([fieldKey, fieldData]) => {
+                                if (!fieldData || typeof fieldData !== 'object' || !('label' in fieldData)) return null
+                                const field = fieldData as FieldData
                                 return (
                                   <div key={fieldKey} className="rounded-md border border-border/50 bg-background p-3">
-                                    <div className="text-xs text-muted-foreground">{fieldData.label}</div>
-                                    <div className="font-semibold text-foreground">{fieldData.value}</div>
-                                    {fieldData.description && (
+                                    <div className="text-xs text-muted-foreground">{field.label}</div>
+                                    <div className="font-semibold text-foreground">{field.value}</div>
+                                    {field.description && (
                                       <div className="mt-1 text-xs text-muted-foreground italic">
-                                        {fieldData.description}
+                                        {field.description}
                                       </div>
                                     )}
                                   </div>
@@ -255,35 +302,38 @@ export default function ExifTestPage() {
                           </div>
                           
                           {/* 대기 투과 계수는 별도 표시 */}
-                          {section.data.atmospheric_trans && (
-                            <div className="mt-3 rounded-md border border-border/50 bg-background p-3">
-                              <div className="mb-2 text-sm font-semibold text-foreground">
-                                {section.data.atmospheric_trans.label}
+                          {'atmospheric_trans' in section.data && section.data.atmospheric_trans && (() => {
+                            const atmos = section.data.atmospheric_trans as AtmosphericTransData
+                            return (
+                              <div className="mt-3 rounded-md border border-border/50 bg-background p-3">
+                                <div className="mb-2 text-sm font-semibold text-foreground">
+                                  {atmos.label}
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-5">
+                                  <div>
+                                    <span className="text-muted-foreground">Alpha1: </span>
+                                    <span className="font-mono">{atmos.alpha1 ?? 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Alpha2: </span>
+                                    <span className="font-mono">{atmos.alpha2 ?? 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Beta1: </span>
+                                    <span className="font-mono">{atmos.beta1 ?? 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Beta2: </span>
+                                    <span className="font-mono">{atmos.beta2 ?? 'N/A'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">X: </span>
+                                    <span className="font-mono">{atmos.x ?? 'N/A'}</span>
+                                  </div>
+                                </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-5">
-                                <div>
-                                  <span className="text-muted-foreground">Alpha1: </span>
-                                  <span className="font-mono">{section.data.atmospheric_trans.alpha1 ?? 'N/A'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Alpha2: </span>
-                                  <span className="font-mono">{section.data.atmospheric_trans.alpha2 ?? 'N/A'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Beta1: </span>
-                                  <span className="font-mono">{section.data.atmospheric_trans.beta1 ?? 'N/A'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">Beta2: </span>
-                                  <span className="font-mono">{section.data.atmospheric_trans.beta2 ?? 'N/A'}</span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">X: </span>
-                                  <span className="font-mono">{section.data.atmospheric_trans.x ?? 'N/A'}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
+                            )
+                          })()}
                         </div>
                       </details>
                     ))}

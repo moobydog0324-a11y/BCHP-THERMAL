@@ -19,6 +19,10 @@ import numpy as np
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:3000"])
 
+# Register Blueprints
+from analysis_routes import analysis_bp
+app.register_blueprint(analysis_bp, url_prefix='/api/analysis')
+
 # ExifTool 경로 자동 검색
 def find_exiftool():
     """여러 위치에서 ExifTool 실행 파일 찾기"""
@@ -27,6 +31,8 @@ def find_exiftool():
         os.path.join(os.path.dirname(__file__), "exiftool(-k).exe"),
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "exiftool.exe"),
         os.path.join(os.path.dirname(os.path.dirname(__file__)), "exiftool(-k).exe"),
+        # Local Mac ExifTool
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "tools", "exiftool-dist", "exiftool"),
         os.path.join(os.path.expanduser("~"), "Downloads", "exiftool.exe"),
         os.path.join(os.path.expanduser("~"), "Downloads", "exiftool(-k).exe"),
         os.path.join(os.path.expanduser("~"), "Desktop", "exiftool.exe"),
@@ -61,6 +67,50 @@ def home():
         "exiftool_available": EXIFTOOL_PATH is not None and os.path.exists(EXIFTOOL_PATH),
         "flir_library": "flirimageextractor (전문 라이브러리)"
     })
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """헬스체크 엔드포인트 - 서비스 가용성 확인"""
+    import time
+    start = time.time()
+    
+    health_status = {
+        "status": "ok",
+        "timestamp": time.time(),
+        "checks": {
+            "exiftool": {
+                "status": "ok" if (EXIFTOOL_PATH and os.path.exists(EXIFTOOL_PATH)) else "fail",
+                "path": EXIFTOOL_PATH if EXIFTOOL_PATH else None
+            },
+            "flir_library": {
+                "status": "ok",
+                "version": "flirimageextractor"
+            }
+        },
+        "response_time_ms": 0
+    }
+    
+    # ExifTool 간단한 버전 체크
+    if EXIFTOOL_PATH and os.path.exists(EXIFTOOL_PATH):
+        try:
+            result = subprocess.run(
+                [EXIFTOOL_PATH, "-ver"], 
+                capture_output=True, 
+                text=True, 
+                timeout=2
+            )
+            if result.returncode == 0:
+                health_status["checks"]["exiftool"]["version"] = result.stdout.strip()
+        except:
+            health_status["checks"]["exiftool"]["status"] = "degraded"
+    
+    # 전체 상태 판정
+    all_ok = all(check["status"] == "ok" for check in health_status["checks"].values())
+    health_status["status"] = "ok" if all_ok else "degraded"
+    health_status["response_time_ms"] = round((time.time() - start) * 1000, 2)
+    
+    status_code = 200 if all_ok else 503
+    return jsonify(health_status), status_code
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
@@ -372,6 +422,131 @@ def generate_thermal_image():
         traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route("/analyze-roi", methods=["POST"])
+def analyze_roi():
+    """
+    ROI (Region of Interest) 온도 분석
+    사각형 영역의 온도 통계를 반환
+    """
+    try:
+        if 'file' not in request.files:
+            return jsonify({"success": False, "error": "파일이 없습니다"}), 400
+        
+        file = request.files['file']
+        
+        # ROI 좌표 받기 (비율로 전달됨: 0~1)
+        x1 = float(request.form.get('x1', 0))
+        y1 = float(request.form.get('y1', 0))
+        x2 = float(request.form.get('x2', 1))
+        y2 = float(request.form.get('y2', 1))
+        roi_name = request.form.get('name', 'ROI')
+        
+        print(f"\n🔍 ROI 분석 요청: {roi_name}")
+        print(f"   파일: {file.filename}")
+        print(f"   영역: ({x1:.3f}, {y1:.3f}) ~ ({x2:.3f}, {y2:.3f})")
+        
+        # 임시 파일로 저장
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+            file.save(temp_file.name)
+            temp_path = temp_file.name
+        
+        try:
+            # FLIR 열화상 이미지 추출
+            fie = FlirImageExtractor()
+            fie.process_image(temp_path)
+            
+            # 온도 데이터 추출
+            thermal_data = fie.get_thermal_np()
+            
+            if thermal_data is None or thermal_data.size == 0:
+                return jsonify({
+                    "success": False,
+                    "error": "열화상 데이터를 추출할 수 없습니다. FLIR 이미지가 아닐 수 있습니다."
+                }), 400
+            
+            # 이미지 크기
+            height, width = thermal_data.shape
+            print(f"   이미지 크기: {width} x {height}")
+            
+            # 비율을 픽셀 좌표로 변환
+            px1 = int(x1 * width)
+            py1 = int(y1 * height)
+            px2 = int(x2 * width)
+            py2 = int(y2 * height)
+            
+            # 좌표 정렬 (x1 < x2, y1 < y2)
+            px1, px2 = min(px1, px2), max(px1, px2)
+            py1, py2 = min(py1, py2), max(py1, py2)
+            
+            # 경계 체크
+            px1 = max(0, min(px1, width - 1))
+            px2 = max(0, min(px2, width - 1))
+            py1 = max(0, min(py1, height - 1))
+            py2 = max(0, min(py2, height - 1))
+            
+            print(f"   픽셀 좌표: ({px1}, {py1}) ~ ({px2}, {py2})")
+            
+            # ROI 영역 추출
+            roi_data = thermal_data[py1:py2+1, px1:px2+1]
+            
+            if roi_data.size == 0:
+                return jsonify({
+                    "success": False,
+                    "error": "ROI 영역이 너무 작습니다."
+                }), 400
+            
+            # 온도 통계 계산
+            roi_stats = {
+                "name": roi_name,
+                "coordinates": {
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "pixel_x1": px1,
+                    "pixel_y1": py1,
+                    "pixel_x2": px2,
+                    "pixel_y2": py2,
+                    "width": px2 - px1 + 1,
+                    "height": py2 - py1 + 1
+                },
+                "temperature": {
+                    "min": float(np.min(roi_data)),
+                    "max": float(np.max(roi_data)),
+                    "avg": float(np.mean(roi_data)),
+                    "median": float(np.median(roi_data)),
+                    "std": float(np.std(roi_data)),
+                    "pixel_count": int(roi_data.size)
+                }
+            }
+            
+            print(f"✅ ROI 분석 완료!")
+            print(f"   최저 온도: {roi_stats['temperature']['min']:.2f}°C")
+            print(f"   최고 온도: {roi_stats['temperature']['max']:.2f}°C")
+            print(f"   평균 온도: {roi_stats['temperature']['avg']:.2f}°C")
+            print(f"   픽셀 수: {roi_stats['temperature']['pixel_count']:,}개")
+            
+            return jsonify({
+                "success": True,
+                "roi": roi_stats,
+                "filename": file.filename
+            })
+            
+        finally:
+            # 임시 파일 삭제
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    except Exception as e:
+        print(f"❌ ROI 분석 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 if __name__ == "__main__":
     print("\n" + "="*60)
     print("🚀 Flask FLIR 전문 분석 서버")
@@ -387,8 +562,8 @@ if __name__ == "__main__":
     print("   - 대기전송, 방사율, 반사온도, 거리, 습도 보정")
     print("   - 검증된 알고리즘 사용")
     
-    print("\n🌐 서버: http://localhost:5000")
+    print("\n🌐 서버: http://localhost:5001")
     print("="*60 + "\n")
     
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
 

@@ -8,7 +8,7 @@ import {
   validateFileExtension,
 } from '@/lib/utils/file-upload'
 
-const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5001'
 
 /**
  * POST /api/thermal-images-with-metadata
@@ -17,7 +17,7 @@ const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
-    
+
     const inspection_id = formData.get('inspection_id') as string
     const image_type = formData.get('image_type') as 'thermal' | 'real'
     const imageFile = formData.get('image_file') as File
@@ -53,22 +53,22 @@ export async function POST(request: NextRequest) {
     // 1. ExifTool로 메타데이터 추출
     let metadata = null
     let thermal_metadata = null
-    
+
     try {
       const metadataFormData = new FormData()
       metadataFormData.append('file', imageFile)
-      
+
       const flaskResponse = await fetch(`${FLASK_SERVER}/analyze`, {
         method: 'POST',
         body: metadataFormData,
       })
-      
+
       if (flaskResponse.ok) {
         const result = await flaskResponse.json()
         if (result.success) {
           metadata = result.metadata
           thermal_metadata = result.thermal_data
-          
+
           // 메타데이터에서 촬영 시간 추출 (사용자가 입력하지 않은 경우)
           if (!capture_timestamp && thermal_metadata?.DateTimeOriginal) {
             capture_timestamp = thermal_metadata.DateTimeOriginal.replace(/(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')

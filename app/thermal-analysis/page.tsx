@@ -69,20 +69,20 @@ export default function ThermalAnalysisPage() {
   const [images, setImages] = useState<ThermalImageData[]>([])
   const [selectedImage, setSelectedImage] = useState<ThermalImageData | null>(null)
   const [loading, setLoading] = useState(true)
-  
+
   // 필터 관련
   const [filterType, setFilterType] = useState<"section" | "date" | "compare">("section")
   const [selectedSection, setSelectedSection] = useState<string>("all")
   const [selectedDate, setSelectedDate] = useState<string>("all")
   const [compareMode, setCompareMode] = useState<"first" | "last" | "both">("both")
-  
+
   // 전체 화면 분석 모드
   const [analysisMode, setAnalysisMode] = useState(false)
   const [analyzingImage, setAnalyzingImage] = useState<ThermalImageData | null>(null)
   const [thermalResult, setThermalResult] = useState<ThermalResult | null>(null)
   const [colormap, setColormap] = useState("jet")
   const [processingThermal, setProcessingThermal] = useState(false)
-  
+
   // 라인 측정
   const [drawingMode, setDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
@@ -90,12 +90,12 @@ export default function ThermalAnalysisPage() {
   const [lines, setLines] = useState<Line[]>([])
   const [mousePos, setMousePos] = useState<{ x: number; y: number; temp: number } | null>(null)
   const [clickedPos, setClickedPos] = useState<{ x: number; y: number; temp: number } | null>(null)
-  
+
   // 최고/최저 온도 지점 표시
   const [showHotColdSpots, setShowHotColdSpots] = useState(true)
   const [hotSpot, setHotSpot] = useState<{ x: number; y: number; temp: number } | null>(null)
   const [coldSpot, setColdSpot] = useState<{ x: number; y: number; temp: number } | null>(null)
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -107,7 +107,7 @@ export default function ThermalAnalysisPage() {
   // 이미지 클릭 → 분석 모드 진입
   const startAnalysis = async (image: ThermalImageData) => {
     console.log('🔍 이미지 분석 시작:', image.image_id)
-    
+
     setAnalyzingImage(image)
     setAnalysisMode(true)
     setProcessingThermal(true)
@@ -130,7 +130,7 @@ export default function ThermalAnalysisPage() {
       formData.append("file", file)
       formData.append("colormap", colormap)
 
-      const flaskResponse = await fetch("http://localhost:5000/generate-thermal-image", {
+      const flaskResponse = await fetch("http://localhost:5001/generate-thermal-image", {
         method: "POST",
         body: formData,
       })
@@ -141,11 +141,11 @@ export default function ThermalAnalysisPage() {
 
       const thermalData = await flaskResponse.json()
       console.log('✅ 열화상 생성 완료:', thermalData.success, thermalData.width, 'x', thermalData.height)
-      
+
       if (thermalData.image) {
         console.log('📸 이미지 데이터 길이:', thermalData.image.length)
       }
-      
+
       setThermalResult(thermalData)
     } catch (error) {
       console.error('❌ 열화상 생성 오류:', error)
@@ -307,26 +307,26 @@ export default function ThermalAnalysisPage() {
 
   const redrawCanvas = () => {
     if (!canvasRef.current || !imgRef.current || !thermalResult?.width || !thermalResult?.height) return
-    
+
     const canvas = canvasRef.current
     const img = imgRef.current
     const ctx = canvas.getContext("2d")
     if (!ctx) return
-    
+
     // 이미지가 로드되지 않았으면 리턴
     if (!img.complete || !img.naturalWidth) return
-    
+
     // 캔버스 크기를 이미지 크기에 맞춤
     canvas.width = img.naturalWidth
     canvas.height = img.naturalHeight
-    
+
     // 캔버스 초기화 (투명하게)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
+
     // 스케일 계산 (thermal data 좌표 -> canvas 좌표)
     const scaleX = img.naturalWidth / thermalResult.width
     const scaleY = img.naturalHeight / thermalResult.height
-    
+
     // 라인들 그리기
     lines.forEach((line) => {
       // 라인
@@ -336,7 +336,7 @@ export default function ThermalAnalysisPage() {
       ctx.moveTo(line.x1 * scaleX, line.y1 * scaleY)
       ctx.lineTo(line.x2 * scaleX, line.y2 * scaleY)
       ctx.stroke()
-      
+
       // 최고 온도 지점 (빨간색)
       ctx.fillStyle = "#FF0000"
       ctx.beginPath()
@@ -345,7 +345,7 @@ export default function ThermalAnalysisPage() {
       ctx.strokeStyle = "#FFFFFF"
       ctx.lineWidth = 2
       ctx.stroke()
-      
+
       // 최저 온도 지점 (파란색)
       ctx.fillStyle = "#0000FF"
       ctx.beginPath()
@@ -355,7 +355,7 @@ export default function ThermalAnalysisPage() {
       ctx.lineWidth = 2
       ctx.stroke()
     })
-    
+
     // 현재 그리고 있는 라인 (초록색 점선)
     if (drawingMode && currentLine && isDrawing) {
       ctx.strokeStyle = "#00FF00"
@@ -367,7 +367,7 @@ export default function ThermalAnalysisPage() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-    
+
     // 클릭한 지점 표시
     if (clickedPos && !drawingMode) {
       ctx.strokeStyle = "#00ff00"
@@ -375,7 +375,7 @@ export default function ThermalAnalysisPage() {
       ctx.beginPath()
       ctx.arc(clickedPos.x * scaleX, clickedPos.y * scaleY, 15, 0, 2 * Math.PI)
       ctx.stroke()
-      
+
       // 십자선
       ctx.beginPath()
       ctx.moveTo(clickedPos.x * scaleX - 20, clickedPos.y * scaleY)
@@ -395,33 +395,33 @@ export default function ThermalAnalysisPage() {
         ctx.beginPath()
         ctx.arc(hotSpot.x * scaleX, hotSpot.y * scaleY, 20, 0, 2 * Math.PI)
         ctx.stroke()
-        
+
         // 내부 원
         ctx.fillStyle = "#FF0000"
         ctx.beginPath()
         ctx.arc(hotSpot.x * scaleX, hotSpot.y * scaleY, 12, 0, 2 * Math.PI)
         ctx.fill()
-        
+
         // 흰색 테두리
         ctx.strokeStyle = "#FFFFFF"
         ctx.lineWidth = 2
         ctx.stroke()
-        
+
         // 라벨 배경
         const labelText = `최고: ${hotSpot.temp.toFixed(2)}°C`
         ctx.font = 'bold 14px sans-serif'
         const textWidth = ctx.measureText(labelText).width
         const labelX = hotSpot.x * scaleX - textWidth / 2
         const labelY = hotSpot.y * scaleY - 30
-        
+
         ctx.fillStyle = 'rgba(255, 0, 0, 0.9)'
         ctx.fillRect(labelX - 5, labelY - 18, textWidth + 10, 24)
-        
+
         // 라벨 텍스트
         ctx.fillStyle = '#FFFFFF'
         ctx.fillText(labelText, labelX, labelY)
       }
-      
+
       // 최저 온도 지점 (큰 파란 원 + 라벨)
       if (coldSpot) {
         // 외곽선
@@ -430,28 +430,28 @@ export default function ThermalAnalysisPage() {
         ctx.beginPath()
         ctx.arc(coldSpot.x * scaleX, coldSpot.y * scaleY, 20, 0, 2 * Math.PI)
         ctx.stroke()
-        
+
         // 내부 원
         ctx.fillStyle = "#0000FF"
         ctx.beginPath()
         ctx.arc(coldSpot.x * scaleX, coldSpot.y * scaleY, 12, 0, 2 * Math.PI)
         ctx.fill()
-        
+
         // 흰색 테두리
         ctx.strokeStyle = "#FFFFFF"
         ctx.lineWidth = 2
         ctx.stroke()
-        
+
         // 라벨 배경
         const labelText = `최저: ${coldSpot.temp.toFixed(2)}°C`
         ctx.font = 'bold 14px sans-serif'
         const textWidth = ctx.measureText(labelText).width
         const labelX = coldSpot.x * scaleX - textWidth / 2
         const labelY = coldSpot.y * scaleY + 45
-        
+
         ctx.fillStyle = 'rgba(0, 0, 255, 0.9)'
         ctx.fillRect(labelX - 5, labelY - 18, textWidth + 10, 24)
-        
+
         // 라벨 텍스트
         ctx.fillStyle = '#FFFFFF'
         ctx.fillText(labelText, labelX, labelY)
@@ -463,19 +463,19 @@ export default function ThermalAnalysisPage() {
   useEffect(() => {
     if (thermalResult?.image && imgRef.current) {
       const img = imgRef.current
-      
+
       const handleImageLoad = () => {
         console.log('✅ 열화상 이미지 로드 완료:', img.naturalWidth, 'x', img.naturalHeight)
-        
+
         // 최고/최저 온도 지점 자동 찾기
         findHotColdSpots()
-        
+
         // 약간의 딜레이 후 redraw (DOM 업데이트 대기)
         setTimeout(() => {
           redrawCanvas()
         }, 100)
       }
-      
+
       if (img.complete && img.naturalWidth) {
         // 이미 로드된 경우
         handleImageLoad()
@@ -497,11 +497,11 @@ export default function ThermalAnalysisPage() {
   }, [lines, clickedPos, currentLine, drawingMode, showHotColdSpots, hotSpot, coldSpot])
 
   const loadImages = async () => {
-      setLoading(true)
+    setLoading(true)
     try {
       const response = await fetch("/api/thermal-images?with_metadata=true")
-        const data = await response.json()
-      
+      const data = await response.json()
+
       if (data.success) {
         setImages(data.data)
       }
@@ -519,14 +519,14 @@ export default function ThermalAnalysisPage() {
 
   // 섹션 필터링
   const sections = Array.from(new Set(images.map(img => img.section_category).filter(Boolean)))
-  
+
   // 날짜 필터링
   const dates = Array.from(new Set(images.map(img => extractDate(img.capture_timestamp)).filter(Boolean))).sort().reverse()
-  
+
   // 날짜별 첫/마지막 사진 추출
   const getDateComparison = () => {
     const dateGroups: { [key: string]: ThermalImageData[] } = {}
-    
+
     // 날짜별로 그룹화
     images.forEach(img => {
       const date = extractDate(img.capture_timestamp)
@@ -537,19 +537,19 @@ export default function ThermalAnalysisPage() {
         dateGroups[date].push(img)
       }
     })
-    
+
     // 각 날짜별로 첫/마지막 사진 추출
     const comparison: Array<{
       date: string
       first: ThermalImageData
       last: ThermalImageData
     }> = []
-    
+
     Object.keys(dateGroups).sort().reverse().forEach(date => {
-      const imagesInDate = dateGroups[date].sort((a, b) => 
+      const imagesInDate = dateGroups[date].sort((a, b) =>
         new Date(a.capture_timestamp).getTime() - new Date(b.capture_timestamp).getTime()
       )
-      
+
       if (imagesInDate.length > 0) {
         comparison.push({
           date,
@@ -558,21 +558,21 @@ export default function ThermalAnalysisPage() {
         })
       }
     })
-    
+
     return comparison
   }
-  
+
   const dateComparison = getDateComparison()
-  
+
   // 현재 선택된 필터에 따라 이미지 필터링
   const filteredImages = (() => {
     if (filterType === "section") {
-      return selectedSection === "all" 
-        ? images 
+      return selectedSection === "all"
+        ? images
         : images.filter(img => img.section_category === selectedSection)
     } else if (filterType === "date") {
-      return selectedDate === "all" 
-        ? images 
+      return selectedDate === "all"
+        ? images
         : images.filter(img => extractDate(img.capture_timestamp) === selectedDate)
     } else {
       // compare 모드에서는 별도 UI 사용
@@ -598,12 +598,12 @@ export default function ThermalAnalysisPage() {
             <Button onClick={loadImages} variant="outline" size="sm">
               새로고침
             </Button>
-          <Link href="/">
+            <Link href="/">
               <Button variant="ghost" className="text-foreground">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              홈으로
-            </Button>
-          </Link>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                홈으로
+              </Button>
+            </Link>
           </div>
         </div>
       </header>
@@ -665,7 +665,7 @@ export default function ThermalAnalysisPage() {
             {/* 필터 */}
             <Card className="border-border bg-card p-6">
               <div className="mb-4 text-lg font-semibold text-foreground">📊 데이터 필터</div>
-              
+
               {/* 필터 타입 선택 */}
               <div className="mb-4 flex gap-2">
                 <Button
@@ -904,51 +904,51 @@ export default function ThermalAnalysisPage() {
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {filteredImages.map((image) => (
-                  <Card
-                    key={image.image_id}
-                    className="cursor-pointer border-border bg-card transition-all hover:shadow-lg hover:ring-2 hover:ring-primary"
-                    onClick={() => startAnalysis(image)}
-                  >
-                    <div className="relative aspect-video overflow-hidden rounded-t-lg bg-muted">
-                      {image.thumbnail_url ? (
-                        <img
-                          src={image.thumbnail_url}
-                          alt={`Image ${image.image_id}`}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                      <Card
+                        key={image.image_id}
+                        className="cursor-pointer border-border bg-card transition-all hover:shadow-lg hover:ring-2 hover:ring-primary"
+                        onClick={() => startAnalysis(image)}
+                      >
+                        <div className="relative aspect-video overflow-hidden rounded-t-lg bg-muted">
+                          {image.thumbnail_url ? (
+                            <img
+                              src={image.thumbnail_url}
+                              alt={`Image ${image.image_id}`}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center">
+                              <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                            </div>
+                          )}
+                          {image.image_type === 'thermal' && (
+                            <div className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-xs font-semibold text-white">
+                              열화상
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {image.image_type === 'thermal' && (
-                        <div className="absolute right-2 top-2 rounded-full bg-orange-500 px-2 py-1 text-xs font-semibold text-white">
-                          열화상
-                    </div>
-                  )}
-                    </div>
-                    <div className="p-4">
-                      <div className="mb-2 text-sm font-semibold text-foreground">
-                        ID: {image.image_id}
-                      </div>
-                      <div className="space-y-1 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-3 w-3" />
-                          <span>구간: {image.section_category || "미지정"}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-3 w-3" />
-                          <span>{new Date(image.capture_timestamp).toLocaleString('ko-KR')}</span>
-                        </div>
-                        {image.camera_model && (
-                          <div className="flex items-center gap-2">
-                            <Thermometer className="h-3 w-3" />
-                            <span>{image.camera_model}</span>
+                        <div className="p-4">
+                          <div className="mb-2 text-sm font-semibold text-foreground">
+                            ID: {image.image_id}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
+                          <div className="space-y-1 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-3 w-3" />
+                              <span>구간: {image.section_category || "미지정"}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-3 w-3" />
+                              <span>{new Date(image.capture_timestamp).toLocaleString('ko-KR')}</span>
+                            </div>
+                            {image.camera_model && (
+                              <div className="flex items-center gap-2">
+                                <Thermometer className="h-3 w-3" />
+                                <span>{image.camera_model}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
                     ))}
                   </div>
                 )}
@@ -961,7 +961,7 @@ export default function ThermalAnalysisPage() {
                 <h3 className="mb-4 text-2xl font-bold text-foreground">
                   📋 이미지 #{selectedImage.image_id} 상세 정보
                 </h3>
-                
+
                 <div className="mb-6 grid gap-4 md:grid-cols-2">
                   <div>
                     <h4 className="mb-2 font-semibold text-foreground">기본 정보</h4>
@@ -1118,7 +1118,7 @@ export default function ThermalAnalysisPage() {
                               const formData = new FormData()
                               formData.append("file", file)
                               formData.append("colormap", newColormap)
-                              const response = await fetch("http://localhost:5000/generate-thermal-image", {
+                              const response = await fetch("http://localhost:5001/generate-thermal-image", {
                                 method: "POST",
                                 body: formData,
                               })

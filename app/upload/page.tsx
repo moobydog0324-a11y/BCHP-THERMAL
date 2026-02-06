@@ -10,10 +10,12 @@ type UploadType = "pipe" | "inspection" | "image" | null
 
 type UploadResult = {
   fileName: string
-  status: "pending" | "uploading" | "success" | "error"
+  status: "pending" | "uploading" | "success" | "error" | "warning"
   message?: string
   imageType?: "thermal" | "real" // 자동 감지된 이미지 타입
   detectedBy?: "metadata" | "filename" | "manual" // 감지 방법
+  temperatureExtracted?: boolean // 온도 데이터 추출 여부
+  metadataExtracted?: boolean // 메타데이터 추출 여부
 }
 
 type SectionCategory = 'A-1' | 'A-2' | 'B-1' | 'B-2' | 'C-1' | 'C-2' | 'D-1' | 'D-2' | 'E-1' | 'E-2' | 'F-1' | 'F-2' | 'G-1' | 'G-2'
@@ -39,17 +41,19 @@ export default function UploadPage() {
   const [weather, setWeather] = useState<string>("")
   const [ambientTemp, setAmbientTemp] = useState<string>("") // 주변 온도
   const [metadataExtracted, setMetadataExtracted] = useState(false) // 메타데이터 추출 여부
-  
+  // ✅ 업로드 완료 팝업 상태
+  const [showUploadComplete, setShowUploadComplete] = useState(false)
+
   // Supabase Storage 경로 계산
   const getStoragePath = () => {
     if (!selectedSection) return "구간을 선택하면 저장 경로가 표시됩니다"
     if (!captureDate) return `${selectedSection}/ ← 날짜를 선택하세요`
-    
+
     const date = new Date(captureDate)
     const year = date.getFullYear()
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
-    
+
     return `thermal-images/${selectedSection}/${year}/${month}/${day}/${imageType}/`
   }
 
@@ -58,19 +62,19 @@ export default function UploadPage() {
     try {
       const formData = new FormData()
       formData.append("file", file)
-      
+
       const response = await fetch("/api/exif/analyze", {
         method: "POST",
         body: formData,
       })
-      
+
       const result = await response.json()
-      
+
       if (result.success && result.thermal_data) {
         console.log(`📸 ${file.name} 메타데이터:`, result.thermal_data)
         return result.thermal_data
       }
-      
+
       return null
     } catch (error) {
       console.error("메타데이터 분석 오류:", error)
@@ -81,20 +85,20 @@ export default function UploadPage() {
   // 파일명으로 빠르게 이미지 타입 추측 (메타데이터 분석 X)
   const detectImageTypeByFilename = (fileName: string): { type: "thermal" | "real", detectedBy: "filename" } => {
     const lowerName = fileName.toLowerCase()
-    
+
     // 확장자 패턴 확인: 파일명R.jpg = 열화상, 파일명.jpg = 실화상
     // 예: DJI_0001R.jpg (열화상), DJI_0001.jpg (실화상)
     if (/r\.(jpg|jpeg|png|tiff|tif)$/i.test(lowerName)) {
       console.log(`⚡ [${fileName}] 확장자 패턴으로 열화상 감지 (파일명R.jpg)`)
       return { type: "thermal", detectedBy: "filename" }
     }
-    
+
     // 기타 열화상 관련 키워드 (FLIR 카메라 등)
     if (lowerName.includes('ir_') || lowerName.includes('flir') || lowerName.includes('thermal') || lowerName.includes('_ir.')) {
       console.log(`⚡ [${fileName}] 키워드로 열화상 감지`)
       return { type: "thermal", detectedBy: "filename" }
     }
-    
+
     // 실화상 관련 키워드
     if (lowerName.includes('rgb') || lowerName.includes('real') || lowerName.includes('visible') || lowerName.includes('_rgb.')) {
       console.log(`⚡ [${fileName}] 키워드로 실화상 감지`)
@@ -107,44 +111,49 @@ export default function UploadPage() {
   }
 
   // 이미지 타입 정밀 감지 (메타데이터 분석 포함)
-  const detectImageTypeWithMetadata = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename" }> => {
-    // 1. 확장자 패턴 확인: 파일명R.jpg = 열화상, 파일명.jpg = 실화상
+  const detectImageTypeWithMetadata = async (file: File): Promise<{ type: "thermal" | "real", detectedBy: "metadata" | "filename", thermalData?: any }> => {
     const fileName = file.name.toLowerCase()
-    if (/r\.(jpg|jpeg|png|tiff|tif)$/i.test(fileName)) {
-      console.log(`🔍 [${file.name}] 확장자 패턴으로 열화상 확정 (파일명R.jpg)`)
-      return { type: "thermal", detectedBy: "filename" }
-    }
-    
-    // 2. 기타 키워드 확인
-    if (fileName.includes('ir_') || fileName.includes('flir') || fileName.includes('thermal')) {
-      console.log(`🔍 [${file.name}] 키워드로 열화상 감지`)
-      return { type: "thermal", detectedBy: "filename" }
-    }
-    if (fileName.includes('rgb') || fileName.includes('real') || fileName.includes('visible')) {
-      console.log(`🔍 [${file.name}] 키워드로 실화상 감지`)
-      return { type: "real", detectedBy: "filename" }
+    let detectedType: "thermal" | "real" = "real" // 기본값
+    let detectedBy: "metadata" | "filename" = "filename"
+
+    // 1. 파일명으로 1차 판단
+    if (/r\.(jpg|jpeg|png|tiff|tif)$/i.test(fileName) || fileName.includes('ir_') || fileName.includes('flir') || fileName.includes('thermal')) {
+      console.log(`🔍 [${file.name}] 파일명으로 열화상 추정 (분석 시작)`)
+      detectedType = "thermal"
+    } else if (fileName.includes('rgb') || fileName.includes('real') || fileName.includes('visible')) {
+      detectedType = "real"
     }
 
-    // 3. 메타데이터로 정확한 판단
-    const metadata = await analyzeMetadata(file)
-    if (metadata) {
-      // FLIR 카메라 모델 확인
-      const cameraModel = metadata.Model || metadata.Make || ''
-      if (cameraModel.toLowerCase().includes('flir')) {
-        console.log(`🔍 [${file.name}] 메타데이터로 열화상 감지 (카메라: ${cameraModel})`)
-        return { type: "thermal", detectedBy: "metadata" }
+    // 2. 메타데이터 분석 (열화상 추정시 필수, 그외에도 확인)
+    // 실화상으로 추정되더라도 혹시 모르니 분석할 수도 있지만, 일단 열화상 추정인 경우는 무조건 분석해야 함.
+    let thermalData = null
+
+    // 열화상으로 감지되었거나, 아직 확실하지 않은 경우(기본값) 분석 시도
+    if (detectedType === "thermal" || detectedType === "real") {
+      // *참고: 실화상 파일명이라도 메타데이터에 온도가 있을 수 있으므로 다 해보는 게 좋음.
+      // 하지만 성능 이슈가 있다면 thermal일 때만. 여기선 정확도가 중요하므로 다 해본다.
+      // 다만 파일명으로 Real이 확실하면(키워드 등) 건너뛰고 싶을 수 있음.
+      // 기존 로직 유지: 파일명에 R이 없으면 Real로 보던 걸 보완.
+
+      const metadata = await analyzeMetadata(file)
+      if (metadata) {
+        thermalData = metadata
+
+        // 데이터가 있으면 열화상으로 확정
+        if (metadata.actual_temp_stats || metadata.CameraTemperatureRangeMax || (metadata.Model && metadata.Model.includes('FLIR'))) {
+          detectedType = "thermal"
+          detectedBy = "metadata"
+          console.log(`✅ [${file.name}] 메타데이터 분석 성공: 열화상 데이터 확보`)
+        }
       }
-
-      // 열화상 관련 데이터 존재 여부 확인
-      if (metadata.CameraTemperatureRangeMax || metadata.PlanckR1 || metadata.actual_temp_stats) {
-        console.log(`🔍 [${file.name}] 메타데이터로 열화상 감지 (온도 데이터 존재)`)
-        return { type: "thermal", detectedBy: "metadata" }
-      }
     }
 
-    // 4. 기본값: R 없이 일반 확장자면 실화상
-    console.log(`🔍 [${file.name}] 기본값으로 실화상 분류 (R 없음)`)
-    return { type: "real", detectedBy: "filename" }
+    // 3. 파일명은 열화상 같은데 분석 실패한 경우? -> 그래도 열화상으로 취급하되 데이터는 없음 (경고 필요)
+    if (detectedType === "thermal" && !thermalData) {
+      console.warn(`⚠️ [${file.name}] 파일명은 열화상 같으나 온도 데이터 추출 실패`)
+    }
+
+    return { type: detectedType, detectedBy, thermalData }
   }
 
   // 파일 선택 핸들러
@@ -152,31 +161,31 @@ export default function UploadPage() {
     const files = e.target.files
     if (files) {
       let fileArray = Array.from(files)
-      
+
       // 이미지 파일만 필터링
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif']
       fileArray = fileArray.filter((file) => {
         const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
         return imageExtensions.includes(ext)
       })
-      
+
       if (fileArray.length === 0) {
         setErrorMessage("선택한 폴더/파일에 이미지가 없습니다. (JPG, PNG, TIFF 형식만 지원)")
         return
       }
-      
+
       if (fileArray.length !== files.length) {
         console.log(`⚠️ ${files.length - fileArray.length}개 파일 제외 (이미지가 아님)`)
       }
-      
+
       console.log(`📁 ${fileArray.length}개 이미지 파일 선택됨`)
-      
+
       setSelectedFiles(fileArray)
       setErrorMessage("") // 에러 메시지 초기화
-      
+
       // 파일명으로 빠르게 타입 추측 (즉시 표시)
       console.log(`⚡ 파일명으로 빠른 분류 시작...`)
-      
+
       const quickResults = fileArray.map((file) => {
         const detection = detectImageTypeByFilename(file.name)
         return {
@@ -186,15 +195,15 @@ export default function UploadPage() {
           detectedBy: "filename" as const,
         }
       })
-      
+
       setUploadResults(quickResults)
-      
+
       // 통계 출력
       const thermalCount = quickResults.filter((r) => r.imageType === "thermal").length
       const realCount = quickResults.filter((r) => r.imageType === "real").length
       console.log(`⚡ 빠른 분류 완료: 열화상 ${thermalCount}개, 실화상 ${realCount}개 (파일명 기준)`)
       console.log(`💡 업로드 시 메타데이터로 정밀 분석이 진행됩니다.`)
-      
+
       // 첫 번째 파일의 메타데이터로 촬영 시간 자동 설정
       if (fileArray.length > 0) {
         const metadata = await analyzeMetadata(fileArray[0])
@@ -207,12 +216,12 @@ export default function UploadPage() {
               const dateStr = date.toISOString().split('T')[0]
               const hours = String(date.getHours()).padStart(2, '0')
               const minutes = String(date.getMinutes()).padStart(2, '0')
-              
+
               setCaptureDate(dateStr)
               setCaptureHour(hours)
               setCaptureMinute(minutes)
               setMetadataExtracted(true) // ✅ 메타데이터 추출 성공
-              
+
               console.log(`📅 메타데이터에서 자동 추출: ${dateStr} ${hours}:${minutes}`)
             }
           } else {
@@ -231,10 +240,10 @@ export default function UploadPage() {
   const removeFile = (index: number) => {
     const newFiles = selectedFiles.filter((_, i) => i !== index)
     const newResults = uploadResults.filter((_, i) => i !== index)
-    
+
     setSelectedFiles(newFiles)
     setUploadResults(newResults)
-    
+
     // 마지막 파일 제거 시 입력 필드 초기화
     if (newFiles.length === 0) {
       const fileInput = document.getElementById('file-input') as HTMLInputElement
@@ -267,10 +276,10 @@ export default function UploadPage() {
 
       console.log('응답 상태:', response.status)
       console.log('응답 헤더:', response.headers)
-      
+
       const responseText = await response.text()
       console.log('응답 원본:', responseText)
-      
+
       let result
       try {
         result = JSON.parse(responseText)
@@ -281,7 +290,7 @@ export default function UploadPage() {
         setSelectedSection(null)
         return
       }
-      
+
       console.log('응답 결과:', result)
 
       if (result.success) {
@@ -332,7 +341,7 @@ export default function UploadPage() {
         setTimeout(() => {
           setUploadSuccess(false)
           setSelectedType(null)
-          ;(e.target as HTMLFormElement).reset()
+            ; (e.target as HTMLFormElement).reset()
         }, 2000)
       } else {
         setErrorMessage(result.error || "업로드 중 오류가 발생했습니다.")
@@ -377,7 +386,7 @@ export default function UploadPage() {
         setTimeout(() => {
           setUploadSuccess(false)
           setSelectedType(null)
-          ;(e.target as HTMLFormElement).reset()
+            ; (e.target as HTMLFormElement).reset()
         }, 2000)
       } else {
         setErrorMessage(result.error || "업로드 중 오류가 발생했습니다.")
@@ -397,7 +406,7 @@ export default function UploadPage() {
 
     const form = e.currentTarget
     const notes = (form.elements.namedItem("notes") as HTMLTextAreaElement).value
-    
+
     // 구간 선택 검증
     if (!selectedSection || !inspectionId) {
       setErrorMessage("구간을 먼저 선택해주세요.")
@@ -411,125 +420,175 @@ export default function UploadPage() {
       setIsSubmitting(false)
       return
     }
-    
-    // 촬영 시간 생성 (있으면 사용, 없으면 서버에서 메타데이터 또는 현재 시간 사용)
+
+    // 촬영 시간 생성
     let captureTimestamp = null
     if (captureDate && captureHour && captureMinute) {
       const captureTime = `${captureHour}:${captureMinute}`
       captureTimestamp = `${captureDate}T${captureTime}`
-      console.log('📅 사용자 지정 시간 사용:', captureTimestamp)
-    } else {
-      console.log('📅 촬영 시간 미지정 - 서버에서 메타데이터 또는 현재 시간 사용')
     }
-    
+
     // 진행률 초기화
     setUploadProgress({ current: 0, total: selectedFiles.length })
-    
+
     let successCount = 0
     let errorCount = 0
 
+    // 동적 import (Client Component에서 사용 시점 로드)
+    const imageCompression = (await import("browser-image-compression")).default
+    const exifr = (await import("exifr")).default
+
     // 각 파일을 순차적으로 업로드
     for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i]
+      const originalFile = selectedFiles[i]
       const fileResult = uploadResults[i]
-      
-      // 상태 업데이트: 분석 중
+
+      // 상태 업데이트: 처리 중
       setUploadResults((prev) =>
         prev.map((result, idx) =>
-          idx === i ? { ...result, status: "uploading" } : result
-        )
-      )
-      
-      // 업로드 직전에 메타데이터로 정밀 분석
-      const fileName = file?.name || uploadResults[i]?.fileName || `파일 ${i + 1}`
-      console.log(`🔍 [${i + 1}/${selectedFiles.length}] ${fileName} 정밀 분석 중...`)
-      const preciseDetection = await detectImageTypeWithMetadata(file)
-      
-      // 분석 결과 업데이트
-      const detectedImageType = preciseDetection.type
-      const detectionMethod = preciseDetection.detectedBy
-      
-      setUploadResults((prev) =>
-        prev.map((result, idx) =>
-          idx === i ? { ...result, imageType: detectedImageType, detectedBy: detectionMethod } : result
+          idx === i ? { ...result, status: "uploading", message: "이미지 최적화 중..." } : result
         )
       )
 
       try {
-        const formData = new FormData()
-        formData.append("inspection_id", inspectionId.toString())
-        formData.append("image_type", detectedImageType) // 자동 감지된 타입 사용
-        formData.append("image_file", file)
-        // 촬영 시간이 있으면 전달, 없으면 서버에서 메타데이터 또는 현재 시간 사용
-        if (captureTimestamp) {
-          formData.append("capture_timestamp", captureTimestamp)
+        const fileName = originalFile.name
+        console.log(`🚀 [${i + 1}/${selectedFiles.length}] ${fileName} 처리 시작`)
+
+        // 1. EXIF 메타데이터 추출 (원본에서)
+        console.log(`   - EXIF 데이터 추출 중...`)
+        let exifData = null
+        try {
+          exifData = await exifr.parse(originalFile)
+        } catch (e) {
+          console.warn(`   ⚠️ EXIF 추출 실패:`, e)
         }
-        formData.append("notes", notes)
-        
-        console.log(`📤 [${i + 1}/${selectedFiles.length}] ${fileName} 업로드 시작 - 타입: ${detectedImageType} (${detectionMethod})`)
-        
-        const response = await fetch("/api/thermal-images", {
-          method: "POST",
-          body: formData,
-        })
 
-        console.log(`📥 [${fileName}] 서버 응답: ${response.status} ${response.statusText}`)
-        
-        const result = await response.json()
+        // 별도 API로 상세 분석 (FLIR 데이터 등)
+        const preciseDetection = await detectImageTypeWithMetadata(originalFile)
+        const detectedImageType = preciseDetection.type
+        const detectionMethod = preciseDetection.detectedBy
+        const thermalData = preciseDetection.thermalData // ✅ 열화상 데이터 캡처
 
-        // 중복 파일 체크 (409 Conflict)
-        if (response.status === 409 && result.duplicate) {
-          console.warn(`⚠️ [${fileName}] 중복 파일: 이미 업로드된 이미지입니다.`)
-          console.warn(`   기존 이미지 ID: ${result.existing_image?.image_id}`)
-          console.warn(`   구역: ${result.existing_image?.section_category}`)
-          
-          errorCount++
-          setUploadResults((prev) =>
-            prev.map((r, idx) =>
-              idx === i
-                ? { ...r, status: "error", message: "⚠️ 중복: 이미 업로드됨" }
-                : r
-            )
+        setUploadResults((prev) =>
+          prev.map((result, idx) =>
+            idx === i ? { ...result, imageType: detectedImageType, detectedBy: detectionMethod } : result
           )
-          continue
-        }
-        
-        if (!response.ok) {
-          throw new Error(`서버 응답 오류: ${response.status} ${response.statusText}`)
-        }
-        
-        console.log(`✅ [${fileName}] 업로드 성공:`, result)
+        )
 
-        if (result.success) {
-          successCount++
+        // 2. 이미지 압축 (WebP 변환 + 리사이즈) 또는 원본 유지
+        let compressedFile = originalFile
+
+        if (detectedImageType === 'thermal') {
+          console.log(`   🔥 열화상 이미지 감지: 메타데이터 보존을 위해 압축 생략 (원본 사용)`)
           setUploadResults((prev) =>
-            prev.map((r, idx) =>
-              idx === i
-                ? { ...r, status: "success", message: "업로드 완료" }
-                : r
+            prev.map((result, idx) =>
+              idx === i ? { ...result, message: "원본 유지 (메타데이터 보존)..." } : result
             )
           )
         } else {
-          errorCount++
-          setUploadResults((prev) =>
-            prev.map((r, idx) =>
-              idx === i
-                ? { ...r, status: "error", message: result.error || "업로드 실패" }
-                : r
-            )
-          )
+          console.log(`   - 이미지 최적화 (WebP, Max 1280px) 진행 중...`)
+          const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1280,
+            useWebWorker: true,
+            fileType: "image/webp"
+          }
+
+          try {
+            compressedFile = await imageCompression(originalFile, options)
+            // 강제로 확장자 변경 (.webp)
+            const newName = fileName.replace(/\.[^/.]+$/, "") + ".webp"
+            compressedFile = new File([compressedFile], newName, { type: "image/webp" })
+          } catch (e) {
+            console.warn(`   ⚠️ 이미지 압축 실패, 원본 사용:`, e)
+          }
         }
+
+        // 3. Pre-signed URL 요청
+        setUploadResults((prev) =>
+          prev.map((result, idx) =>
+            idx === i ? { ...result, message: "업로드 URL 요청 중..." } : result
+          )
+        )
+        const uploadUrlRes = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: compressedFile.name,
+            filetype: compressedFile.type,
+            folder: `thermal-images/${selectedSection}` // 폴더 구조 개선
+          })
+        })
+
+        if (!uploadUrlRes.ok) throw new Error("업로드 URL 발급 실패")
+        const { uploadUrl, publicUrl } = await uploadUrlRes.json()
+
+        // 4. R2 직접 업로드
+        setUploadResults((prev) =>
+          prev.map((result, idx) =>
+            idx === i ? { ...result, message: "R2 스토리지 업로드 중..." } : result
+          )
+        )
+        const uploadRes = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": compressedFile.type },
+          body: compressedFile
+        })
+
+        if (!uploadRes.ok) throw new Error(`R2 업로드 실패: ${uploadRes.status}`)
+
+        // 5. 백엔드에 메타데이터 저장 요청
+        setUploadResults((prev) =>
+          prev.map((result, idx) =>
+            idx === i ? { ...result, message: "데이터베이스 저장 중..." } : result
+          )
+        )
+
+        // JSON Body 구성
+        const payload = {
+          inspection_id: inspectionId,
+          image_type: detectedImageType,
+          image_url: publicUrl, // R2 URL 사용
+          file_size: compressedFile.size,
+          original_filename: fileName,
+          capture_timestamp: captureTimestamp,
+          notes: notes,
+          exif_data: exifData, // 클라이언트에서 추출한 EXIF
+          thermal_data: thermalData, // ✅ 서버 분석으로 얻은 열화상 데이터 (온도 포함)
+        }
+
+        const saveRes = await fetch("/api/thermal-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }, // JSON 전송으로 변경
+          body: JSON.stringify(payload),
+        })
+
+        const result = await saveRes.json()
+
+        if (!saveRes.ok) throw new Error(result.error || "DB 저장 실패")
+
+        // 성공 처리
+        console.log(`✅ [${fileName}] 처리 완료`)
+        successCount++
+        setUploadResults((prev) =>
+          prev.map((r, idx) =>
+            idx === i
+              ? {
+                ...r,
+                status: "success",
+                message: "완료",
+                temperatureExtracted: result.temperature_extracted,
+                metadataExtracted: !!exifData
+              }
+              : r
+          )
+        )
+
       } catch (error) {
         errorCount++
         const errorMsg = error instanceof Error ? error.message : "알 수 없는 오류"
-        console.error(`❌ [${fileName}] 업로드 실패:`, errorMsg)
-        console.error(`상세 오류 정보:`, error)
-        
-        // 네트워크 오류인지 확인
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-          console.error(`⚠️ 네트워크 오류: API 서버가 실행 중인지 확인하세요 (http://localhost:3000/api/thermal-images)`)
-        }
-        
+        console.error(`❌ [${originalFile.name}] 실패:`, errorMsg)
+
         setUploadResults((prev) =>
           prev.map((r, idx) =>
             idx === i
@@ -539,23 +598,20 @@ export default function UploadPage() {
         )
       }
 
-      // 진행률 업데이트
       setUploadProgress({ current: i + 1, total: selectedFiles.length })
     }
 
     setIsSubmitting(false)
 
-    // 결과 메시지
     if (errorCount === 0) {
       setUploadSuccess(true)
-      // 성공 시 5초 후 자동 초기화 (또는 사용자가 다음 단계 선택)
-      setTimeout(() => {
-        // 자동 초기화하지 않고 사용자가 선택하도록 변경
-      }, 5000)
+      setShowUploadComplete(true) // 팝업 표시
     } else {
-      setErrorMessage(
-        `${successCount}개 성공, ${errorCount}개 실패했습니다. 실패한 파일을 확인해주세요.`
-      )
+      setErrorMessage(`${successCount}개 성공, ${errorCount}개 실패.`)
+      // 실패했더라도 성공한게 있으면 팝업 띄울지 고민... 여기선 일단 메시지만.
+      if (successCount > 0) {
+        setShowUploadComplete(true)
+      }
     }
   }
 
@@ -678,8 +734,8 @@ export default function UploadPage() {
                         🌡️ 온도 분석 보기
                       </Button>
                     </Link>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => {
                         setUploadSuccess(false)
@@ -1060,7 +1116,7 @@ export default function UploadPage() {
                           📋 선택된 파일 ({selectedFiles.length}개)
                           {uploadResults.some(r => r.imageType) && (
                             <span className="ml-2 text-xs text-muted-foreground">
-                              (🌡️ 열화상 {uploadResults.filter(r => r.imageType === "thermal").length}개 
+                              (🌡️ 열화상 {uploadResults.filter(r => r.imageType === "thermal").length}개
                               / 📷 실화상 {uploadResults.filter(r => r.imageType === "real").length}개)
                             </span>
                           )}
@@ -1093,7 +1149,7 @@ export default function UploadPage() {
                           return (
                             <div
                               key={index}
-                              className="flex items-center justify-between rounded-md border border-border bg-background p-3"
+                              className="flex items-center justify-between rounded-md border border-border bg-white dark:bg-slate-900 p-3 shadow-sm hover:shadow-md transition-all duration-200"
                             >
                               <div className="flex flex-1 items-center gap-3">
                                 <FileImage className="h-5 w-5 flex-shrink-0 text-primary" />
@@ -1103,11 +1159,10 @@ export default function UploadPage() {
                                       {file.name}
                                     </div>
                                     {result?.imageType && (
-                                      <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                        result.imageType === "thermal" 
-                                          ? "bg-red-500/10 text-red-600" 
-                                          : "bg-blue-500/10 text-blue-600"
-                                      }`}>
+                                      <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${result.imageType === "thermal"
+                                        ? "bg-red-500/10 text-red-600"
+                                        : "bg-blue-500/10 text-blue-600"
+                                        }`}>
                                         {result.imageType === "thermal" ? "🌡️ 열화상" : "📷 실화상"}
                                         {result.detectedBy === "metadata" && (
                                           <span className="text-[10px] opacity-70">(메타데이터)</span>
@@ -1170,6 +1225,9 @@ export default function UploadPage() {
                                 {result?.status === "success" && (
                                   <CheckCircle2 className="h-5 w-5 text-green-600" />
                                 )}
+                                {result?.status === "warning" && (
+                                  <AlertCircle className="h-5 w-5 text-yellow-600" />
+                                )}
                                 {result?.status === "error" && (
                                   <div className="flex items-center gap-1">
                                     <AlertCircle className="h-5 w-5 text-red-600" />
@@ -1204,6 +1262,64 @@ export default function UploadPage() {
                     </div>
                   )}
 
+                  {/* 업로드 완료 결과 (실패 파일 상세) */}
+                  {!isSubmitting && uploadProgress.total > 0 && uploadResults.some(r => r.status === "error") && (
+                    <Card className="border-red-500/50 bg-red-50 dark:bg-red-950/20">
+                      <div className="p-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <AlertCircle className="h-5 w-5 text-red-600" />
+                          <h4 className="text-lg font-semibold text-red-900 dark:text-red-200">
+                            ⚠️ 업로드 실패 파일 ({uploadResults.filter(r => r.status === "error").length}개)
+                          </h4>
+                        </div>
+                        <div className="space-y-2">
+                          {uploadResults.map((result, index) => {
+                            if (result.status !== "error") return null
+                            const file = selectedFiles[index]
+                            if (!file) return null
+
+                            return (
+                              <div
+                                key={index}
+                                className="rounded-lg border border-red-300 bg-white dark:bg-red-950/30 p-3"
+                              >
+                                <div className="flex items-start gap-3">
+                                  <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-red-900 dark:text-red-200 truncate">
+                                      {file.name}
+                                    </div>
+                                    <div className="mt-1 text-sm text-red-700 dark:text-red-300">
+                                      {result.message || "알 수 없는 오류"}
+                                    </div>
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                      크기: {(file.size / (1024 * 1024)).toFixed(2)} MB
+                                      {result.imageType && (
+                                        <span className="ml-2">
+                                          | 타입: {result.imageType === "thermal" ? "🌡️ 열화상" : "📷 실화상"}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="mt-4 text-sm text-red-800 dark:text-red-300">
+                          💡 <strong>대처 방법:</strong>
+                          <ul className="ml-4 mt-2 list-disc space-y-1 text-xs">
+                            <li>파일이 손상되지 않았는지 확인하세요</li>
+                            <li>파일 형식이 올바른지 확인하세요 (jpg, jpeg, png, tiff 지원)</li>
+                            <li>파일 크기가 50MB를 초과하지 않는지 확인하세요</li>
+                            <li>Flask 서버가 정상적으로 실행 중인지 확인하세요</li>
+                            <li>서버 콘솔 로그에서 자세한 오류 내용을 확인하세요</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+
                   {/* 촬영 날짜 및 시간 */}
                   <div className="space-y-3 rounded-lg border-2 border-primary/20 bg-primary/5 p-4">
                     <div className="flex items-center justify-between">
@@ -1218,7 +1334,7 @@ export default function UploadPage() {
                         </div>
                       )}
                     </div>
-                    
+
                     {metadataExtracted ? (
                       // 메타데이터 추출 성공 - 자동 설정된 값 표시
                       <div className="space-y-3">
@@ -1233,7 +1349,7 @@ export default function UploadPage() {
                             💡 자동 추출된 값이 정확하지 않다면 아래에서 수동으로 변경할 수 있습니다.
                           </div>
                         </div>
-                        
+
                         {/* 수동 수정 옵션 */}
                         <details className="group">
                           <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
@@ -1292,7 +1408,7 @@ export default function UploadPage() {
                           💡 이미지에 EXIF 메타데이터가 없거나 추출에 실패했습니다.<br />
                           촬영 날짜/시간을 입력하지 않으면 <strong>이미지 파일의 메타데이터 또는 현재 시간</strong>이 자동으로 사용됩니다.
                         </div>
-                        
+
                         <div className="grid gap-4 md:grid-cols-3">
                           <div className="md:col-span-1">
                             <label className="mb-2 block text-sm font-medium text-foreground">
@@ -1343,7 +1459,7 @@ export default function UploadPage() {
                             </select>
                           </div>
                         </div>
-                        
+
                         <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
                           ℹ️ <strong>촬영 시간 결정 순서:</strong><br />
                           1️⃣ 수동 입력한 시간<br />
@@ -1369,7 +1485,7 @@ export default function UploadPage() {
                     <div className="flex items-center gap-2 text-sm font-semibold text-blue-700">
                       🌤️ 촬영 환경 정보 (선택사항)
                     </div>
-                    
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-foreground">
@@ -1406,7 +1522,7 @@ export default function UploadPage() {
                         />
                       </div>
                     </div>
-                    
+
                     <p className="text-xs text-muted-foreground">
                       💡 날씨와 온도 정보는 점검 기록에 저장되어 열화상 분석에 활용됩니다
                     </p>
@@ -1447,6 +1563,58 @@ export default function UploadPage() {
           </div>
         )}
       </main>
+      {/* ✅ 업로드 완료 팝업 */}
+      {showUploadComplete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-sm border-2 border-green-500 bg-card p-6 shadow-xl">
+            <div className="mb-4 flex flex-col items-center text-center">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+                <CheckCircle2 className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-xl font-bold text-card-foreground">업로드 완료!</h3>
+              <p className="mt-2 text-muted-foreground">
+                이미지가 성공적으로 시스템에<br />저장되었습니다.
+              </p>
+              <div className="mt-4 w-full rounded-lg bg-muted p-3 text-sm">
+                <div className="flex justify-between">
+                  <span>전체</span>
+                  <span className="font-bold">{selectedFiles.length}건</span>
+                </div>
+                <div className="flex justify-between text-green-600 font-semibold">
+                  <span>성공</span>
+                  <span>{selectedFiles.length - uploadResults.filter(r => r.status === 'error').length}건</span>
+                </div>
+                {uploadResults.filter(r => r.status === 'error').length > 0 && (
+                  <div className="flex justify-between text-red-600 font-semibold">
+                    <span>실패</span>
+                    <span>{uploadResults.filter(r => r.status === 'error').length}건</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <Link href="/data" className="flex-1">
+                <Button variant="outline" className="w-full">
+                  목록으로 이동
+                </Button>
+              </Link>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={() => {
+                  setShowUploadComplete(false)
+                  setUploadSuccess(false)
+                  setSelectedFiles([])
+                  setUploadResults([])
+                  setUploadProgress({ current: 0, total: 0 })
+                  setSelectedType(null) // 초기 화면으로
+                }}
+              >
+                계속 업로드
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

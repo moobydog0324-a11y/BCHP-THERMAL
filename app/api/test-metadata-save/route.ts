@@ -74,12 +74,12 @@ export async function GET(request: NextRequest) {
 
     // 5. Flask 서버 상태 확인
     try {
-      const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+      const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5001'
       const flaskResponse = await fetch(`${FLASK_SERVER}/`, {
         method: 'GET',
         signal: AbortSignal.timeout(3000),
       })
-      
+
       if (flaskResponse.ok) {
         const flaskData = await flaskResponse.json()
         results.flask_server_status = flaskData.status || 'running'
@@ -141,6 +141,11 @@ function generateRecommendations(results: any): string[] {
 
   return recommendations
 }
+
+
+
+
+
 
 
 

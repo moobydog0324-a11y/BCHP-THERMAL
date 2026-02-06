@@ -1,3 +1,7 @@
 Flask==3.0.0
 flask-cors==4.0.0
-flirimageextractor==1.5.9
+flirimageextractor==1.4.0
+loguru
+opencv-python-headless==4.8.0.76
+numpy==1.26.0
+scikit-image==0.21.0

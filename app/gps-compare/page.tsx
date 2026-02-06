@@ -52,9 +52,9 @@ export default function GPSComparePage() {
   // 열화상에 대응하는 실화상 찾기 (GPS + 시간 기준)
   const findMatchingRealImage = (thermalImage: ImageWithMetadata): ImageWithMetadata | null => {
     const realImages = allImages.filter(img => img.image_type === 'real')
-    
+
     if (!thermalImage.gps) return null
-    
+
     // 같은 GPS 위치
     const matchingByGPS = realImages.filter(img => {
       if (!img.gps) return false
@@ -62,9 +62,9 @@ export default function GPSComparePage() {
       const lonDiff = Math.abs(img.gps.longitude - thermalImage.gps!.longitude)
       return latDiff < 0.0001 && lonDiff < 0.0001
     })
-    
+
     if (matchingByGPS.length === 0) return null
-    
+
     // 시간이 가장 가까운 것 선택 (5분 이내)
     const thermalTime = new Date(thermalImage.capture_timestamp).getTime()
     const closest = matchingByGPS.reduce((prev, curr) => {
@@ -72,7 +72,7 @@ export default function GPSComparePage() {
       const currDiff = Math.abs(new Date(curr.capture_timestamp).getTime() - thermalTime)
       return currDiff < prevDiff ? curr : prev
     })
-    
+
     const timeDiff = Math.abs(new Date(closest.capture_timestamp).getTime() - thermalTime)
     return timeDiff < 5 * 60 * 1000 ? closest : null
   }
@@ -99,7 +99,7 @@ export default function GPSComparePage() {
     try {
       const response = await fetch(`/api/thermal-images/by-gps-location?section=${selectedSection}`)
       const data = await response.json()
-      
+
       if (data.success) {
         setLocations(data.locations || [])
       }
@@ -114,7 +114,7 @@ export default function GPSComparePage() {
     setSelectedLocation(location)
     setComparing(true)
     setSelectedDates([])
-    
+
     try {
       const response = await fetch('/api/thermal-images/by-gps-location', {
         method: 'POST',
@@ -126,9 +126,9 @@ export default function GPSComparePage() {
           tolerance: 5, // 5미터 허용 오차
         }),
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         // 모든 이미지 저장
         const allFetchedImages: ImageWithMetadata[] = []
@@ -136,7 +136,7 @@ export default function GPSComparePage() {
           allFetchedImages.push(...imgs)
         })
         setAllImages(allFetchedImages)
-        
+
         // 열화상만 필터링해서 표시
         const thermalOnly: { [date: string]: ImageWithMetadata[] } = {}
         Object.entries(data.grouped_by_date || {}).forEach(([date, imgs]: [string, any]) => {
@@ -211,6 +211,13 @@ export default function GPSComparePage() {
                 🌡️ 온도 분석
               </Button>
             </Link>
+            {selectedSection && (
+              <Link href={`/analysis/${selectedSection}`}>
+                <Button variant="default" size="sm" className="bg-purple-600 hover:bg-purple-700">
+                  ⚡ 정밀 분석 모드 (Beta)
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -229,11 +236,10 @@ export default function GPSComparePage() {
                       setSelectedLocation(null)
                       setMatchedImages({})
                     }}
-                    className={`rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all ${
-                      selectedSection === section
+                    className={`rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all ${selectedSection === section
                         ? "border-primary bg-primary text-primary-foreground"
                         : "border-border bg-background text-foreground hover:border-primary/50"
-                    }`}
+                      }`}
                   >
                     {section}
                   </button>
@@ -266,11 +272,10 @@ export default function GPSComparePage() {
                       <button
                         key={idx}
                         onClick={() => selectLocation(location)}
-                        className={`w-full rounded-lg border-2 p-3 text-left text-sm transition-all ${
-                          selectedLocation === location
+                        className={`w-full rounded-lg border-2 p-3 text-left text-sm transition-all ${selectedLocation === location
                             ? "border-primary bg-primary/10"
                             : "border-border bg-background hover:border-primary/50"
-                        }`}
+                          }`}
                       >
                         <div className="mb-1 flex items-start gap-2">
                           <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
@@ -311,11 +316,10 @@ export default function GPSComparePage() {
                       key={date}
                       onClick={() => toggleDateSelection(date)}
                       disabled={!selectedDates.includes(date) && selectedDates.length >= 2}
-                      className={`flex w-full items-center justify-between rounded-lg border-2 px-3 py-2 text-left text-sm transition-all disabled:opacity-40 ${
-                        selectedDates.includes(date)
+                      className={`flex w-full items-center justify-between rounded-lg border-2 px-3 py-2 text-left text-sm transition-all disabled:opacity-40 ${selectedDates.includes(date)
                           ? "border-primary bg-primary/10"
                           : "border-border bg-background hover:border-primary/50"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center gap-2">
                         <Calendar className="h-4 w-4" />
@@ -410,47 +414,46 @@ export default function GPSComparePage() {
                         const matchingRealImage = findMatchingRealImage(img)
                         const isShowingReal = showingRealImage[img.image_id]
                         const displayImage = isShowingReal && matchingRealImage ? matchingRealImage : img
-                        
+
                         return (
-                        <div key={img.image_id} className="space-y-2">
-                          <div className="group relative aspect-video overflow-hidden rounded-lg border border-border bg-muted">
-                            <Image
-                              src={displayImage.image_url}
-                              alt={`${isShowingReal ? '실화상' : '열화상'} ${displayImage.image_id}`}
-                              fill
-                              className="object-contain transition-transform group-hover:scale-105"
-                            />
-                            {/* 이미지 타입 배지 */}
-                            <div className={`absolute left-2 top-2 rounded px-2 py-1 text-xs font-semibold ${
-                              isShowingReal ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'
-                            }`}>
-                              {isShowingReal ? '📷 실화상' : '🌡️ 열화상'}
-                            </div>
-                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                              <div className="text-xs text-white">
-                                <div>{new Date(displayImage.capture_timestamp).toLocaleTimeString('ko-KR')}</div>
-                                {displayImage.thermal_data_json?.AtmosphericTemperature && (
-                                  <div className="flex items-center gap-1">
-                                    <Thermometer className="h-3 w-3" />
-                                    {displayImage.thermal_data_json.AtmosphericTemperature}
-                                  </div>
-                                )}
+                          <div key={img.image_id} className="space-y-2">
+                            <div className="group relative aspect-video overflow-hidden rounded-lg border border-border bg-muted">
+                              <Image
+                                src={displayImage.image_url}
+                                alt={`${isShowingReal ? '실화상' : '열화상'} ${displayImage.image_id}`}
+                                fill
+                                className="object-contain transition-transform group-hover:scale-105"
+                              />
+                              {/* 이미지 타입 배지 */}
+                              <div className={`absolute left-2 top-2 rounded px-2 py-1 text-xs font-semibold ${isShowingReal ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'
+                                }`}>
+                                {isShowingReal ? '📷 실화상' : '🌡️ 열화상'}
+                              </div>
+                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                                <div className="text-xs text-white">
+                                  <div>{new Date(displayImage.capture_timestamp).toLocaleTimeString('ko-KR')}</div>
+                                  {displayImage.thermal_data_json?.AtmosphericTemperature && (
+                                    <div className="flex items-center gap-1">
+                                      <Thermometer className="h-3 w-3" />
+                                      {displayImage.thermal_data_json.AtmosphericTemperature}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
+
+                            {/* 실화상 토글 버튼 */}
+                            {matchingRealImage && (
+                              <Button
+                                variant={isShowingReal ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => toggleRealImage(img.image_id)}
+                                className="w-full"
+                              >
+                                {isShowingReal ? '🌡️ 열화상 보기' : '📷 실화상 보기'}
+                              </Button>
+                            )}
                           </div>
-                          
-                          {/* 실화상 토글 버튼 */}
-                          {matchingRealImage && (
-                            <Button
-                              variant={isShowingReal ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => toggleRealImage(img.image_id)}
-                              className="w-full"
-                            >
-                              {isShowingReal ? '🌡️ 열화상 보기' : '📷 실화상 보기'}
-                            </Button>
-                          )}
-                        </div>
                         )
                       })}
                     </div>

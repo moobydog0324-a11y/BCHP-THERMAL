@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db/connection'
 import { ThermalImage } from '@/lib/types/database'
-import {
-  saveImageFile,
-  generateThumbnail,
-  validateFileSize,
-  validateFileExtension,
-} from '@/lib/utils/file-upload'
 
 /**
  * GET /api/thermal-images
  * 열화상 이미지 데이터 조회 (메타데이터 포함)
- * 
- * 쿼리 파라미터:
- * - inspection_id: 특정 점검의 이미지만 조회
- * - with_metadata: true면 메타데이터도 함께 조회
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,7 +15,6 @@ export async function GET(request: NextRequest) {
     let result
 
     if (withMetadata) {
-      // 메타데이터 포함 조회
       if (inspectionId) {
         result = await query(
           `SELECT 
@@ -57,7 +46,6 @@ export async function GET(request: NextRequest) {
         )
       }
     } else {
-      // 메타데이터 없이 조회 (기존 방식)
       if (inspectionId) {
         result = await query<ThermalImage>(
           `SELECT * FROM thermal_images 
@@ -94,28 +82,30 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/thermal-images
- * 새로운 이미지 데이터 업로드 (실제 파일 업로드 + 메타데이터 자동 추출)
+ * 새로운 이미지 데이터 등록 (R2 업로드 후 메타데이터 저장)
+ * - 클라이언트에서 이미지를 R2에 업로드한 후 호출함
+ * - JSON Payload를 받음 (FormData 아님)
  */
 export async function POST(request: NextRequest) {
   try {
-    // FormData로 파일 받기
-    const formData = await request.formData()
-    
-    const inspection_id = formData.get('inspection_id') as string
-    const image_type = formData.get('image_type') as 'thermal' | 'real'
-    const imageFile = formData.get('image_file') as File
-    let capture_timestamp = formData.get('capture_timestamp') as string
-    const notes = formData.get('notes') as string
-
-    const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+    // JSON Payload 처리
+    const body = await request.json()
+    const {
+      inspection_id,
+      image_type,
+      image_url, // R2 URL
+      file_size,
+      original_filename,
+      capture_timestamp,
+      notes,
+      exif_data, // 클라이언트에서 추출한 EXIF 데이터
+      thermal_data // ✅ 클라이언트가 전달한 열화상 데이터 (온도 포함)
+    } = body
 
     // 필수 필드 검증
-    if (!inspection_id || !image_type || !imageFile) {
+    if (!inspection_id || !image_type || !image_url) {
       return NextResponse.json(
-        {
-          success: false,
-          error: '점검 ID, 이미지 타입, 이미지 파일은 필수 항목입니다.',
-        },
+        { success: false, error: '점검 ID, 이미지 타입, 이미지 URL은 필수 항목입니다.' },
         { status: 400 }
       )
     }
@@ -123,15 +113,15 @@ export async function POST(request: NextRequest) {
     // 이미지 타입 검증
     if (image_type !== 'thermal' && image_type !== 'real') {
       return NextResponse.json(
-        {
-          success: false,
-          error: '이미지 타입은 "thermal" 또는 "real"만 가능합니다.',
-        },
+        { success: false, error: '이미지 타입은 "thermal" 또는 "real"만 가능합니다.' },
         { status: 400 }
       )
     }
 
-    // 점검 존재 여부 확인 및 구간 정보 가져오기
+    // 파일 이름에서 파일 포맷 추출
+    const file_format = original_filename?.split('.').pop()?.toLowerCase() || 'jpg'
+
+    // 점검 존재 여부 확인
     const inspectionResult = await query(
       `SELECT i.inspection_id, p.section_category 
        FROM inspections i
@@ -142,255 +132,128 @@ export async function POST(request: NextRequest) {
 
     if (!inspectionResult.rowCount || inspectionResult.rowCount === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: '존재하지 않는 점검 ID입니다.',
-        },
+        { success: false, error: '존재하지 않는 점검 ID입니다.' },
         { status: 404 }
       )
     }
 
-    const sectionCategory = inspectionResult.rows[0].section_category
-
-    // 파일 크기 검증 (최대 50MB)
-    if (!validateFileSize(imageFile, 50)) {
+    // 중복 체크 (URL 기준)
+    const duplicateCheck = await query(
+      `SELECT image_id FROM thermal_images WHERE image_url = $1 LIMIT 1`,
+      [image_url]
+    )
+    if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: '파일 크기는 50MB를 초과할 수 없습니다.',
-        },
-        { status: 400 }
+        { success: false, error: '이미 등록된 이미지 URL입니다.', duplicate: true },
+        { status: 409 }
       )
     }
 
-    // 파일 확장자 검증
-    if (!validateFileExtension(imageFile)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: '지원하지 않는 파일 형식입니다. (jpg, jpeg, png, tiff 허용)',
-        },
-        { status: 400 }
-      )
+    // 메타데이터 가공
+    const metadata = exif_data || {}
+    const final_thermal_data = thermal_data || {} // 받아온 열화상 데이터 사용
+
+    // 온도 통계 추출 (DB 컬럼용)
+    let range_min = null
+    let range_max = null
+    let avg_temp = null
+
+    if (final_thermal_data.actual_temp_stats) {
+      range_min = final_thermal_data.actual_temp_stats.min_temp
+      range_max = final_thermal_data.actual_temp_stats.max_temp
+      avg_temp = final_thermal_data.actual_temp_stats.avg_temp
     }
 
-    // 🔍 파일 해시 계산 (중복 체크용)
-    console.log('🔐 파일 해시 계산 중...')
-    const fileBuffer = await imageFile.arrayBuffer()
-    const hashBuffer = await crypto.subtle.digest('SHA-256', fileBuffer)
-    const hashArray = Array.from(new Uint8Array(hashBuffer))
-    const fileHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-    console.log(`🔐 파일 해시: ${fileHash.substring(0, 16)}...`)
-
-    // 🚫 중복 파일 체크 (file_hash 컬럼이 있을 경우에만)
-    try {
-      const duplicateCheck = await query(
-        `SELECT ti.image_id, ti.image_url, ti.capture_timestamp, p.section_category
-         FROM thermal_images ti
-         LEFT JOIN inspections i ON ti.inspection_id = i.inspection_id
-         LEFT JOIN pipes p ON i.pipe_id = p.pipe_id
-         LEFT JOIN image_metadata im ON ti.image_id = im.image_id
-         WHERE im.file_hash = $1
-         LIMIT 1`,
-        [fileHash]
-      )
-
-      if (duplicateCheck.rowCount && duplicateCheck.rowCount > 0) {
-        const duplicate = duplicateCheck.rows[0]
-        console.warn(`⚠️ 중복 파일 감지: 이미 업로드된 이미지입니다.`)
-        console.warn(`   기존 이미지 ID: ${duplicate.image_id}`)
-        console.warn(`   구역: ${duplicate.section_category || '알 수 없음'}`)
-        console.warn(`   촬영시간: ${duplicate.capture_timestamp}`)
-        
-        return NextResponse.json(
-          {
-            success: false,
-            error: '이미 업로드된 이미지입니다.',
-            duplicate: true,
-            existing_image: {
-              image_id: duplicate.image_id,
-              image_url: duplicate.image_url,
-              section_category: duplicate.section_category,
-              capture_timestamp: duplicate.capture_timestamp,
-            }
-          },
-          { status: 409 } // Conflict
-        )
-      }
-
-      console.log('✅ 중복 체크 완료: 새로운 파일입니다.')
-    } catch (dupCheckError) {
-      // file_hash 컬럼이 없으면 중복 체크 건너뛰기
-      console.warn('⚠️ 중복 체크 실패 (file_hash 컬럼이 없을 수 있음):', dupCheckError)
-      console.log('💡 중복 체크를 건너뛰고 업로드를 진행합니다.')
-    }
-
-    // 🔥 메타데이터 추출 (ExifTool)
-    let metadata = null
-    let thermal_data = null
-    
-    try {
-      console.log('🔍 ExifTool로 메타데이터 추출 시작...')
-      console.log(`📁 파일 정보: ${imageFile.name}, 크기: ${imageFile.size} bytes`)
-      
-      const metadataFormData = new FormData()
-      metadataFormData.append('file', imageFile)
-      
-      // 타임아웃 설정 (60초)
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000)
-      
+    // EXIF에서 촬영 시간 파싱 (없으면 입력받은 값 또는 현재 시간)
+    let final_timestamp = capture_timestamp
+    if (!final_timestamp && metadata.DateTimeOriginal) {
+      // EXIF 날짜 포맷 (YYYY:MM:DD HH:MM:SS) -> ISO 변환 시도
       try {
-        const flaskResponse = await fetch(`${FLASK_SERVER}/analyze`, {
-          method: 'POST',
-          body: metadataFormData,
-          signal: controller.signal,
-        })
-        
-        clearTimeout(timeoutId)
-        
-        console.log(`📥 Flask 서버 응답: ${flaskResponse.status}`)
-        
-        if (flaskResponse.ok) {
-          const result = await flaskResponse.json()
-          console.log(`📊 메타데이터 결과:`, result.success ? '성공' : '실패')
-          
-          if (result.success) {
-            metadata = result.metadata
-            thermal_data = result.thermal_data
-            console.log('✅ 메타데이터 추출 성공')
-            
-            // 촬영 시간이 없으면 메타데이터에서 추출
-            if (!capture_timestamp && thermal_data?.DateTimeOriginal) {
-              capture_timestamp = thermal_data.DateTimeOriginal.replace(/(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')
-              console.log('📅 메타데이터에서 촬영 시간 추출:', capture_timestamp)
-            }
+        // 날짜 구분자가 : 인 경우 처리
+        if (typeof metadata.DateTimeOriginal === 'string') {
+          const parts = metadata.DateTimeOriginal.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/)
+          if (parts) {
+            final_timestamp = `${parts[1]}-${parts[2]}-${parts[3]}T${parts[4]}:${parts[5]}:${parts[6]}`
           } else {
-            console.warn('⚠️ 메타데이터 추출 실패:', result.error)
+            const d = new Date(metadata.DateTimeOriginal)
+            if (!isNaN(d.getTime())) final_timestamp = d.toISOString()
           }
-        } else {
-          console.warn('⚠️ Flask 서버 응답 오류:', flaskResponse.status)
-          const errorText = await flaskResponse.text()
-          console.warn('오류 내용:', errorText)
+        } else if (metadata.DateTimeOriginal instanceof Date) {
+          final_timestamp = metadata.DateTimeOriginal.toISOString()
         }
-      } catch (fetchError) {
-        clearTimeout(timeoutId)
-        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          console.warn('⚠️ 메타데이터 추출 타임아웃 (60초 초과) - 메타데이터 없이 계속 진행')
-        } else {
-          throw fetchError
-        }
+      } catch (e) {
+        console.warn('날짜 파싱 실패:', e)
       }
-    } catch (metadataError) {
-      console.warn('⚠️ 메타데이터 추출 중 오류 (계속 진행):', metadataError)
     }
+    if (!final_timestamp) final_timestamp = new Date().toISOString()
 
-    // 촬영 시간이 여전히 없으면 현재 시간 사용
-    if (!capture_timestamp) {
-      capture_timestamp = new Date().toISOString()
-      console.log('📅 촬영 시간 미지정, 현재 시간 사용')
-    }
-
-    // 촬영 날짜 파싱
-    const captureDate = new Date(capture_timestamp)
-
-    // Supabase Storage에 파일 업로드 (구간별로 분리)
-    const imageUpload = await saveImageFile(imageFile, image_type, captureDate, sectionCategory)
-    
-    // 썸네일 생성
-    const thumbnailUpload = await generateThumbnail(imageFile, image_type, captureDate, sectionCategory)
-
-    // 파일 정보 추출
-    const file_size_bytes = imageFile.size
-    const file_format = imageFile.type.split('/')[1] || 'jpg'
-
-    // DB에 이미지 정보 저장 (메타데이터 포함)
+    // DB 저장
     const result = await query<ThermalImage>(
       `INSERT INTO thermal_images (
         inspection_id, image_url, thumbnail_url, 
         image_width, image_height, 
         capture_timestamp, file_size_bytes, file_format, image_type,
-        camera_model
+        camera_model,
+        range_min, range_max, avg_temp 
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
         inspection_id,
-        imageUpload.url,
-        thumbnailUpload.url,
-        thermal_data?.ImageWidth || null,
-        thermal_data?.ImageHeight || null,
-        capture_timestamp,
-        file_size_bytes,
+        image_url,
+        image_url, // 썸네일은 원본 URL 사용
+        metadata.ExifImageWidth || metadata.ImageWidth || null,
+        metadata.ExifImageHeight || metadata.ImageHeight || null,
+        final_timestamp,
+        file_size || 0,
         file_format,
         image_type,
-        thermal_data?.Model || thermal_data?.Make || null,
+        metadata.Model || metadata.Make || null,
+        range_min, // $11
+        range_max, // $12
+        avg_temp   // $13
       ]
     )
 
-    // 🔥 메타데이터를 별도 테이블에 저장 (파일 해시 포함)
-    if (metadata && result.rows[0]) {
+    // 메타데이터 테이블 저장
+    if (result.rows[0]) {
       try {
         await query(
-          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json, file_hash, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, NOW(), NOW())
-           ON CONFLICT (image_id) DO UPDATE 
-           SET metadata_json = $2, thermal_data_json = $3, file_hash = $4, updated_at = NOW()`,
+          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json, created_at, updated_at)
+                 VALUES ($1, $2, $3, NOW(), NOW())
+                 ON CONFLICT (image_id) DO UPDATE 
+                 SET metadata_json = $2, thermal_data_json = $3, updated_at = NOW()`,
           [
             result.rows[0].image_id,
             JSON.stringify(metadata),
-            JSON.stringify(thermal_data),
-            fileHash,
+            JSON.stringify(final_thermal_data)
           ]
         )
-        console.log(`✅ 메타데이터 DB 저장 완료 (image_id: ${result.rows[0].image_id})`)
-      } catch (metaError) {
-        // 테이블이 없으면 경고만 출력 (업로드는 성공)
-        console.warn('⚠️ 메타데이터 저장 실패 (image_metadata 테이블이 없을 수 있음):', metaError)
-      }
-    } else if (result.rows[0]) {
-      // 메타데이터가 없어도 파일 해시는 저장
-      try {
-        await query(
-          `INSERT INTO image_metadata (image_id, file_hash, created_at, updated_at)
-           VALUES ($1, $2, NOW(), NOW())
-           ON CONFLICT (image_id) DO UPDATE 
-           SET file_hash = $2, updated_at = NOW()`,
-          [result.rows[0].image_id, fileHash]
-        )
-        console.log(`✅ 파일 해시 DB 저장 완료 (메타데이터 없음)`)
-      } catch (hashError) {
-        console.warn('⚠️ 파일 해시 저장 실패:', hashError)
+      } catch (e) {
+        console.error('메타데이터 저장 실패:', e)
       }
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: `${image_type === 'thermal' ? '열화상' : '실화상'} 이미지가 Supabase Storage에 성공적으로 업로드되었습니다.`,
-        data: result.rows[0],
-        metadata_extracted: !!metadata,
-        thermal_data: thermal_data,
-        file_info: {
-          original_name: imageFile.name,
-          section: sectionCategory,
-          storage_path: imageUpload.path,
-          public_url: imageUpload.url,
-          size: file_size_bytes,
-          type: image_type,
-        },
-      },
-      { status: 201 }
-    )
+    return NextResponse.json({
+      success: true,
+      message: '이미지 정보가 성공적으로 등록되었습니다.',
+      data: result.rows[0],
+      temperature_extracted: false, // Flask 서버 미사용으로 인해 false
+      file_info: {
+        public_url: image_url,
+        original_name: original_filename
+      }
+    }, { status: 201 })
+
   } catch (error) {
-    console.error('이미지 업로드 오류:', error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : '이미지를 업로드하는 중 오류가 발생했습니다.',
-      },
-      { status: 500 }
-    )
+    console.error('이미지 정보 등록 실패:', error)
+    const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류'
+
+    // DB 에러 상세 구분
+    if (errorMessage.includes('violates foreign key')) {
+      return NextResponse.json({ success: false, error: 'DB 제약조건 위반 (잘못된 pipe_id 등)' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 })
   }
 }
-

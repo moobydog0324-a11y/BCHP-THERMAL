@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
-    
+
     if (!file) {
       return NextResponse.json({
         success: false,
@@ -17,28 +17,28 @@ export async function POST(request: NextRequest) {
 
     console.log(`🧪 Flask 테스트: ${file.name}, ${file.size} bytes`)
 
-    const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
-    
+    const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5001'
+
     // Flask로 전송
     const flaskFormData = new FormData()
     flaskFormData.append('file', file)
-    
+
     console.log(`📤 Flask 서버로 전송: ${FLASK_SERVER}/analyze`)
-    
+
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 30000) // 30초
-    
+
     try {
       const flaskResponse = await fetch(`${FLASK_SERVER}/analyze`, {
         method: 'POST',
         body: flaskFormData,
         signal: controller.signal,
       })
-      
+
       clearTimeout(timeoutId)
-      
+
       console.log(`📥 Flask 응답: ${flaskResponse.status}`)
-      
+
       if (!flaskResponse.ok) {
         const errorText = await flaskResponse.text()
         return NextResponse.json({
@@ -47,10 +47,10 @@ export async function POST(request: NextRequest) {
           details: errorText,
         })
       }
-      
+
       const result = await flaskResponse.json()
       console.log(`📊 메타데이터 추출 결과:`, result.success ? '성공' : '실패')
-      
+
       return NextResponse.json({
         success: true,
         flask_response: result,

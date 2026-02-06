@@ -32,6 +32,9 @@ export async function GET(
         ti.file_format,
         ti.image_type,
         ti.created_at,
+        ti.range_min,
+        ti.range_max,
+        ti.avg_temp,
         im.metadata_json,
         im.thermal_data_json,
         p.section_category,
@@ -43,7 +46,7 @@ export async function GET(
       JOIN pipes p ON i.pipe_id = p.pipe_id
       WHERE p.section_category = $1
     `
-    
+
     const queryParams: (string | number)[] = [section]
 
     // 이미지 타입 필터 추가
@@ -66,61 +69,75 @@ export async function GET(
     const enhancedImages = result.rows.map((row) => {
       try {
         processedCount++
-      const metadata = row.metadata_json
-      const thermalData = row.thermal_data_json
+        const metadata = row.metadata_json
+        const thermalData = row.thermal_data_json
 
-      // GPS 정보 추출 및 변환
-      let gpsInfo = null
-      if (metadata?.GPSLatitude && metadata?.GPSLongitude) {
-        const lat = dmsToDecimal(metadata.GPSLatitude)
-        const lon = dmsToDecimal(metadata.GPSLongitude)
-        
-        if (lat !== null && lon !== null) {
-          // 고도 파싱 (GPSAltitude + GPSAltitudeRef 고려)
-          let altitude = null
-          if (metadata.GPSAltitude) {
-            const altStr = String(metadata.GPSAltitude)
-            const altMatch = altStr.match(/([-\d.]+)\s*m/i)
-            if (altMatch) {
-              let altValue = parseFloat(altMatch[1])
-              // GPSAltitudeRef: 0 = Above Sea Level, 1 = Below Sea Level
-              if (metadata.GPSAltitudeRef === 1 || metadata.GPSAltitudeRef === '1') {
-                altValue = -Math.abs(altValue)
-              } else {
-                altValue = Math.abs(altValue) // Above Sea Level은 항상 양수
+        // GPS 정보 추출 및 변환
+        let gpsInfo = null
+        if (metadata?.GPSLatitude && metadata?.GPSLongitude) {
+          const lat = dmsToDecimal(metadata.GPSLatitude)
+          const lon = dmsToDecimal(metadata.GPSLongitude)
+
+          if (lat !== null && lon !== null) {
+            // 고도 파싱 (GPSAltitude + GPSAltitudeRef 고려)
+            let altitude = null
+            if (metadata.GPSAltitude) {
+              const altStr = String(metadata.GPSAltitude)
+              const altMatch = altStr.match(/([-\d.]+)\s*m/i)
+              if (altMatch) {
+                let altValue = parseFloat(altMatch[1])
+                // GPSAltitudeRef: 0 = Above Sea Level, 1 = Below Sea Level
+                if (metadata.GPSAltitudeRef === 1 || metadata.GPSAltitudeRef === '1') {
+                  altValue = -Math.abs(altValue)
+                } else {
+                  altValue = Math.abs(altValue) // Above Sea Level은 항상 양수
+                }
+                altitude = `${altValue.toFixed(1)}m`
               }
-              altitude = `${altValue.toFixed(1)}m`
+            }
+
+            gpsInfo = {
+              latitude: lat,
+              longitude: lon,
+              formatted: formatGPS(lat, lon),
+              altitude: altitude,
             }
           }
-          
-          gpsInfo = {
-            latitude: lat,
-            longitude: lon,
-            formatted: formatGPS(lat, lon),
-            altitude: altitude,
-          }
         }
-      }
 
-      // 온도 정보 추출 - 실제 측정 온도 우선 사용
-      const actualTempStats = thermalData?.actual_temp_stats
-      const temperatureInfo = {
-        // 실제 측정 온도가 있으면 사용, 없으면 카메라 설정값 사용
-        range_min: actualTempStats?.min_temp 
-          ? `${actualTempStats.min_temp.toFixed(1)}°C`
-          : thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin || null,
-        range_max: actualTempStats?.max_temp 
-          ? `${actualTempStats.max_temp.toFixed(1)}°C`
-          : thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax || null,
-        avg_temp: actualTempStats?.avg_temp 
-          ? `${actualTempStats.avg_temp.toFixed(1)}°C`
-          : null,
-        median_temp: actualTempStats?.median_temp 
-          ? `${actualTempStats.median_temp.toFixed(1)}°C`
-          : null,
-        // 원본 통계 데이터도 포함
-        actual_temp_stats: actualTempStats || null,
-      }
+        // 온도 정보 추출 - DB 컬럼 우선 사용, 없으면 JSON 파싱
+        const actualTempStats = thermalData?.actual_temp_stats
+
+        const range_min = row.range_min ?? actualTempStats?.min_temp
+        const range_max = row.range_max ?? actualTempStats?.max_temp
+        const avg_temp = row.avg_temp ?? actualTempStats?.avg_temp
+        const median_temp = actualTempStats?.median_temp // DB 컬럼 없음
+
+        const temperatureInfo = {
+          // 실제 측정 온도가 있으면 사용, 없으면 카메라 설정값 사용
+          range_min: range_min !== null && range_min !== undefined
+            ? `${Number(range_min).toFixed(1)}°C`
+            : thermalData?.CameraTemperatureRangeMin || metadata?.CameraTemperatureRangeMin || null,
+
+          range_max: range_max !== null && range_max !== undefined
+            ? `${Number(range_max).toFixed(1)}°C`
+            : thermalData?.CameraTemperatureRangeMax || metadata?.CameraTemperatureRangeMax || null,
+
+          avg_temp: avg_temp !== null && avg_temp !== undefined
+            ? `${Number(avg_temp).toFixed(1)}°C`
+            : null,
+
+          median_temp: median_temp !== null && median_temp !== undefined
+            ? `${Number(median_temp).toFixed(1)}°C`
+            : null,
+
+          // 원본 통계 데이터도 포함
+          actual_temp_stats: actualTempStats || {
+            min_temp: range_min,
+            max_temp: range_max,
+            avg_temp: avg_temp
+          },
+        }
 
         // 기본 이미지 정보 + GPS + 온도 + 전체 메타데이터
         return {

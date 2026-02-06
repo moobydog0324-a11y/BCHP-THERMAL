@@ -56,29 +56,29 @@ const COLORMAPS = [
 export default function ThermalViewerPage() {
   const searchParams = useSearchParams()
   const imageId = searchParams?.get("imageId")
-  
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [colormap, setColormap] = useState("jet")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ThermalResult | null>(null)
   const [mousePos, setMousePos] = useState<{ x: number; y: number; temp: number } | null>(null)
   const [clickedPos, setClickedPos] = useState<{ x: number; y: number; temp: number } | null>(null)
-  
+
   // 라인 측정 관련 상태
   const [drawingMode, setDrawingMode] = useState(false)
   const [isDrawing, setIsDrawing] = useState(false)
   const [currentLine, setCurrentLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const [lines, setLines] = useState<Line[]>([])
-  
+
   // 중복 이미지 체크
   const [isDuplicate, setIsDuplicate] = useState(false)
   const [duplicateInfo, setDuplicateInfo] = useState<{ filename: string; uploadTime: string } | null>(null)
   const [uploadedImages, setUploadedImages] = useState<Map<string, { filename: string; uploadTime: string }>>(new Map())
-  
+
   // DB 이미지 관련
   const [dbImageInfo, setDbImageInfo] = useState<any>(null)
   const [isDbMode, setIsDbMode] = useState(false)
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
 
@@ -117,7 +117,7 @@ export default function ThermalViewerPage() {
       }
 
       const imageData = data.data.find((img: any) => img.image_id === parseInt(id))
-      
+
       if (!imageData) {
         throw new Error('이미지를 찾을 수 없습니다')
       }
@@ -127,7 +127,7 @@ export default function ThermalViewerPage() {
       // 2. 이미지 URL에서 파일 다운로드
       const imageResponse = await fetch(imageData.image_url)
       const imageBlob = await imageResponse.blob()
-      
+
       // Blob을 File 객체로 변환
       const file = new File([imageBlob], `image_${id}.jpg`, { type: 'image/jpeg' })
 
@@ -136,7 +136,7 @@ export default function ThermalViewerPage() {
       formData.append("file", file)
       formData.append("colormap", colormap)
 
-      const flaskResponse = await fetch("http://localhost:5000/generate-thermal-image", {
+      const flaskResponse = await fetch("http://localhost:5001/generate-thermal-image", {
         method: "POST",
         body: formData,
       })
@@ -168,13 +168,13 @@ export default function ThermalViewerPage() {
   const checkDuplicate = async (file: File): Promise<boolean> => {
     const hash = await calculateFileHash(file)
     const existing = uploadedImages.get(hash)
-    
+
     if (existing) {
       setIsDuplicate(true)
       setDuplicateInfo(existing)
       return true
     }
-    
+
     return false
   }
 
@@ -185,11 +185,11 @@ export default function ThermalViewerPage() {
       filename: file.name,
       uploadTime: new Date().toLocaleString('ko-KR')
     }
-    
+
     const newMap = new Map(uploadedImages)
     newMap.set(hash, info)
     setUploadedImages(newMap)
-    
+
     // localStorage에 저장
     const obj = Object.fromEntries(newMap)
     localStorage.setItem('uploadedThermalImages', JSON.stringify(obj))
@@ -200,7 +200,7 @@ export default function ThermalViewerPage() {
     if (file) {
       // 중복 체크
       const isDup = await checkDuplicate(file)
-      
+
       setSelectedFile(file)
       setResult(null)
       setMousePos(null)
@@ -208,7 +208,7 @@ export default function ThermalViewerPage() {
       setLines([])
       setCurrentLine(null)
       setDrawingMode(false)
-      
+
       // 중복이 아니면 자동으로 사라지도록
       if (!isDup) {
         setIsDuplicate(false)
@@ -332,7 +332,7 @@ export default function ThermalViewerPage() {
 
       const data = await response.json()
       setResult(data)
-      
+
       // 성공적으로 업로드되면 등록
       if (data.success) {
         await registerImage(selectedFile)
@@ -355,11 +355,11 @@ export default function ThermalViewerPage() {
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    
+
     // 캔버스 내 상대 좌표
     const x = Math.floor((e.clientX - rect.left) * (result.width / rect.width))
     const y = Math.floor((e.clientY - rect.top) * (result.height / rect.height))
-    
+
     if (x >= 0 && x < result.width && y >= 0 && y < result.height) {
       const index = y * result.width + x
       const temp = result.temperature_data[index]
@@ -378,10 +378,10 @@ export default function ThermalViewerPage() {
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    
+
     const x = Math.floor((e.clientX - rect.left) * (result.width / rect.width))
     const y = Math.floor((e.clientY - rect.top) * (result.height / rect.height))
-    
+
     setIsDrawing(true)
     setCurrentLine({ x1: x, y1: y, x2: x, y2: y })
   }
@@ -391,16 +391,16 @@ export default function ThermalViewerPage() {
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    
+
     const x = Math.floor((e.clientX - rect.left) * (result!.width! / rect.width))
     const y = Math.floor((e.clientY - rect.top) * (result!.height! / rect.height))
-    
+
     // 라인 분석
     const line = analyzeLine(currentLine.x1, currentLine.y1, x, y)
     if (line) {
       setLines([...lines, line])
     }
-    
+
     setIsDrawing(false)
     setCurrentLine(null)
     redrawCanvas()
@@ -413,10 +413,10 @@ export default function ThermalViewerPage() {
 
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    
+
     const x = Math.floor((e.clientX - rect.left) * (result.width / rect.width))
     const y = Math.floor((e.clientY - rect.top) * (result.height / rect.height))
-    
+
     if (x >= 0 && x < result.width && y >= 0 && y < result.height) {
       const index = y * result.width + x
       const temp = result.temperature_data[index]
@@ -449,7 +449,7 @@ export default function ThermalViewerPage() {
     const img = imgRef.current
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
-    
+
     if (!ctx || !img.complete) return
 
     const scaleX = img.naturalWidth / result.width
@@ -508,7 +508,7 @@ export default function ThermalViewerPage() {
       ctx.stroke()
       ctx.setLineDash([])
     }
-    
+
     // 클릭된 위치 표시
     if (clickedPos && !drawingMode) {
       ctx.strokeStyle = "#00ff00"
@@ -516,7 +516,7 @@ export default function ThermalViewerPage() {
       ctx.beginPath()
       ctx.arc(clickedPos.x * scaleX, clickedPos.y * scaleY, 15, 0, 2 * Math.PI)
       ctx.stroke()
-      
+
       // 십자선
       ctx.beginPath()
       ctx.moveTo(clickedPos.x * scaleX - 20, clickedPos.y * scaleY)
@@ -533,7 +533,7 @@ export default function ThermalViewerPage() {
       const img = imgRef.current
       const canvas = canvasRef.current
       const ctx = canvas.getContext("2d")
-      
+
       if (!ctx) return
 
       img.onload = () => {
@@ -578,8 +578,8 @@ export default function ThermalViewerPage() {
             🎨 열화상 이미지 뷰어 {isDbMode && <span className="text-blue-600">(DB 모드)</span>}
           </h2>
           <p className="text-muted-foreground">
-            {isDbMode 
-              ? "데이터베이스에 저장된 이미지를 분석합니다" 
+            {isDbMode
+              ? "데이터베이스에 저장된 이미지를 분석합니다"
               : "다양한 컬러 팔레트로 시각화하고 클릭하여 온도를 확인하세요"
             }
           </p>
@@ -660,71 +660,71 @@ export default function ThermalViewerPage() {
             <Card className="border-border bg-card p-6">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-xl font-bold text-card-foreground">1️⃣ 설정</h3>
-              {uploadedImages.size > 0 && (
+                {uploadedImages.size > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearUploadHistory}
+                    className="text-xs text-muted-foreground hover:text-red-600"
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    업로드 기록 삭제 ({uploadedImages.size}개)
+                  </Button>
+                )}
+              </div>
+              <div className="space-y-4">
+                {/* 파일 선택 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-foreground">
+                    열화상 이미지 선택
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg"
+                    onChange={handleFileSelect}
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
+                  />
+                </div>
+
+                {/* 컬러맵 선택 */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-foreground">
+                    컬러 팔레트 선택
+                  </label>
+                  <select
+                    value={colormap}
+                    onChange={(e) => setColormap(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none"
+                  >
+                    {COLORMAPS.map((cm) => (
+                      <option key={cm.value} value={cm.value}>
+                        {cm.label} - {cm.description}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* 생성 버튼 */}
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearUploadHistory}
-                  className="text-xs text-muted-foreground hover:text-red-600"
+                  onClick={generateThermalImage}
+                  disabled={!selectedFile || loading}
+                  className="w-full"
+                  size="lg"
                 >
-                  <Trash2 className="mr-1 h-3 w-3" />
-                  업로드 기록 삭제 ({uploadedImages.size}개)
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      이미지 생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Thermometer className="mr-2 h-5 w-5" />
+                      열화상 이미지 생성
+                    </>
+                  )}
                 </Button>
-              )}
-            </div>
-            <div className="space-y-4">
-              {/* 파일 선택 */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-foreground">
-                  열화상 이미지 선택
-                </label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/jpg"
-                  onChange={handleFileSelect}
-                  className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
-                />
               </div>
-
-              {/* 컬러맵 선택 */}
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-foreground">
-                  컬러 팔레트 선택
-                </label>
-                <select
-                  value={colormap}
-                  onChange={(e) => setColormap(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-4 py-2 text-foreground focus:border-primary focus:outline-none"
-                >
-                  {COLORMAPS.map((cm) => (
-                    <option key={cm.value} value={cm.value}>
-                      {cm.label} - {cm.description}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* 생성 버튼 */}
-              <Button
-                onClick={generateThermalImage}
-                disabled={!selectedFile || loading}
-                className="w-full"
-                size="lg"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    이미지 생성 중...
-                  </>
-                ) : (
-                  <>
-                    <Thermometer className="mr-2 h-5 w-5" />
-                  열화상 이미지 생성
-                </>
-              )}
-            </Button>
-          </div>
-        </Card>
+            </Card>
           )}
 
           {/* 결과 표시 */}
@@ -908,7 +908,7 @@ export default function ThermalViewerPage() {
                         </div>
 
                         <div className="mt-3 text-xs text-muted-foreground">
-                          라인 좌표: ({line.x1}, {line.y1}) → ({line.x2}, {line.y2}) | 
+                          라인 좌표: ({line.x1}, {line.y1}) → ({line.x2}, {line.y2}) |
                           측정 포인트: {line.temps.length}개
                         </div>
                       </div>
@@ -955,13 +955,13 @@ export default function ThermalViewerPage() {
                 <p>2️⃣ 원하는 컬러 팔레트를 선택하세요</p>
                 <p>3️⃣ <strong>열화상 이미지 생성</strong> 버튼을 클릭하세요</p>
               </div>
-              
+
               <div>
                 <div className="mb-1 font-semibold text-foreground">📍 포인트 측정 (기본 모드)</div>
                 <p>• 이미지 위에 마우스를 올리면 실시간으로 온도가 표시됩니다</p>
                 <p>• 클릭하면 해당 지점의 온도가 고정되어 표시됩니다 (초록색 원)</p>
               </div>
-              
+
               <div>
                 <div className="mb-1 font-semibold text-foreground">📏 라인 측정 (라인 그리기 모드)</div>
                 <p>• <strong>라인 그리기 모드</strong> 버튼을 클릭하여 모드를 전환하세요</p>

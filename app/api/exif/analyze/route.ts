@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5001'
 
 /**
  * POST /api/exif/analyze
@@ -37,10 +37,10 @@ export async function POST(request: NextRequest) {
 
     const result = await flaskResponse.json()
     return NextResponse.json(result)
-    
+
   } catch (error) {
     console.error('ExifTool 분석 오류:', error)
-    
+
     // Flask 서버 연결 오류
     if (error instanceof TypeError && error.message.includes('fetch')) {
       return NextResponse.json(
@@ -71,7 +71,7 @@ export async function GET() {
   try {
     const response = await fetch(`${FLASK_SERVER}/`)
     const data = await response.json()
-    
+
     return NextResponse.json({
       success: true,
       flask_server: FLASK_SERVER,

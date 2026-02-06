@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5000'
+const FLASK_SERVER = process.env.FLASK_SERVER_URL || 'http://localhost:5001'
 
 /**
  * POST /api/exif/analyze-formatted
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await flaskResponse.json()
-    
+
     if (!result.success) {
       return NextResponse.json(result)
     }
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
       success: true,
       filename: result.filename,
       processing_time: result.processing_time,
-      
+
       sections: {
         // 1. 가장 중요한 온도 정보
         temperature: {
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
 
       // 경고 메시지
       warnings: metadata?.Warning ? [metadata.Warning] : [],
-      
+
       // 원본 데이터 참조
       has_raw_data: true
     }
@@ -232,10 +232,10 @@ export async function POST(request: NextRequest) {
       _raw_metadata: metadata,
       _raw_thermal_data: thermalData,
     })
-    
+
   } catch (error) {
     console.error('ExifTool 분석 오류:', error)
-    
+
     if (error instanceof TypeError && error.message.includes('fetch')) {
       return NextResponse.json(
         {

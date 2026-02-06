@@ -47,3 +47,13 @@ COMMENT ON COLUMN pipes.section_category IS '구간 카테고리: A-1, A-2, B-1,
 
 
 
+
+
+
+
+
+
+
+
+
+
