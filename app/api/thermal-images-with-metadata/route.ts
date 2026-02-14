@@ -113,14 +113,61 @@ export async function POST(request: NextRequest) {
     const file_size_bytes = imageFile.size
     const file_format = imageFile.type.split('/')[1] || 'jpg'
 
+    // GPS 좌표 파싱 (DMS 포맷 -> 십진수)
+    const parseCoordinate = (coord: any): number | null => {
+      if (typeof coord === 'number') return coord
+      if (typeof coord === 'string') {
+        // 이미 십진수 문자열인 경우
+        if (!isNaN(parseFloat(coord)) && !coord.includes('deg')) {
+          return parseFloat(coord)
+        }
+
+        // DMS 포맷 파싱 (예: "37 deg 12' 34.56\" N")
+        try {
+          // 아주 단순한 정규식 예시 (ExifTool 포맷에 맞춰 조정 필요)
+          // ExifTool JSON usually returns "35 deg 8' 2.40" N"
+          const parts = coord.match(/(\d+)\s*deg\s*(\d+)'\s*([\d.]+)"\s*([NSEW])?/i)
+          if (parts) {
+            const d = parseFloat(parts[1])
+            const m = parseFloat(parts[2])
+            const s = parseFloat(parts[3])
+            const ref = parts[4]?.toUpperCase()
+
+            let decimal = d + m / 60 + s / 3600
+            if (ref === 'S' || ref === 'W') {
+              decimal = -decimal
+            }
+            return decimal
+          }
+        } catch (e) {
+          console.error('GPS 파싱 오류:', e)
+        }
+      }
+      return null
+    }
+
+    const gps_latitude = parseCoordinate(metadata?.GPSLatitude)
+    const gps_longitude = parseCoordinate(metadata?.GPSLongitude)
+
+    // 고도는 "54 m" 같은 문자열일 수 있음
+    let gps_altitude = null
+    if (metadata?.GPSAltitude) {
+      if (typeof metadata.GPSAltitude === 'number') {
+        gps_altitude = metadata.GPSAltitude
+      } else if (typeof metadata.GPSAltitude === 'string') {
+        gps_altitude = parseFloat(metadata.GPSAltitude.replace(/[^\d.-]/g, ''))
+      }
+    }
+
     const result = await query<ThermalImage>(
       `INSERT INTO thermal_images (
         inspection_id, image_url, thumbnail_url, 
         image_width, image_height, 
         capture_timestamp, file_size_bytes, file_format, image_type,
-        camera_model
+        camera_model,
+        gps_latitude, gps_longitude, gps_altitude
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *`,
       [
         inspection_id,
@@ -133,6 +180,9 @@ export async function POST(request: NextRequest) {
         file_format,
         image_type,
         thermal_metadata?.Model || thermal_metadata?.Make || null,
+        gps_latitude,
+        gps_longitude,
+        gps_altitude
       ]
     )
 
