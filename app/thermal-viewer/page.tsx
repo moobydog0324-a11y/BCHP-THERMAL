@@ -6,7 +6,8 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
-import { Activity, ArrowLeft, Upload, Loader2, Thermometer, MousePointer2, Minus, Trash2, Plus, Database } from "lucide-react"
+import { Activity, ArrowLeft, Upload, Loader2, Thermometer, MousePointer2, Minus, Trash2, Plus, Database, Map as MapIcon, X, Flame, Scale } from "lucide-react"
+import KakaoMapViewer from "@/components/KakaoMapViewer"
 
 type ThermalResult = {
   success: boolean
@@ -70,6 +71,10 @@ export default function ThermalViewerPage() {
   const [currentLine, setCurrentLine] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const [lines, setLines] = useState<Line[]>([])
 
+  // Delta T Analysis State
+  const [deltaMode, setDeltaMode] = useState(false)
+  const [deltaPoints, setDeltaPoints] = useState<{ x: number; y: number; temp: number }[]>([])
+
   // 중복 이미지 체크
   const [isDuplicate, setIsDuplicate] = useState(false)
   const [duplicateInfo, setDuplicateInfo] = useState<{ filename: string; uploadTime: string } | null>(null)
@@ -78,6 +83,11 @@ export default function ThermalViewerPage() {
   // DB 이미지 관련
   const [dbImageInfo, setDbImageInfo] = useState<any>(null)
   const [isDbMode, setIsDbMode] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+
+  // Isotherm State
+  const [showIsotherm, setShowIsotherm] = useState(false)
+  const [isothermThreshold, setIsothermThreshold] = useState<number>(0)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -208,6 +218,8 @@ export default function ThermalViewerPage() {
       setLines([])
       setCurrentLine(null)
       setDrawingMode(false)
+      setDeltaMode(false)
+      setDeltaPoints([])
 
       // 중복이 아니면 자동으로 사라지도록
       if (!isDup) {
@@ -319,6 +331,8 @@ export default function ThermalViewerPage() {
     setResult(null)
     setMousePos(null)
     setClickedPos(null)
+    setDeltaMode(false)
+    setDeltaPoints([])
 
     try {
       const formData = new FormData()
@@ -420,7 +434,18 @@ export default function ThermalViewerPage() {
     if (x >= 0 && x < result.width && y >= 0 && y < result.height) {
       const index = y * result.width + x
       const temp = result.temperature_data[index]
-      setClickedPos({ x, y, temp })
+
+      if (deltaMode) {
+        // Delta T Point Selection
+        if (deltaPoints.length >= 2) {
+          setDeltaPoints([{ x, y, temp }]) // Start new
+        } else {
+          setDeltaPoints([...deltaPoints, { x, y, temp }])
+        }
+      } else {
+        // Point Measurement
+        setClickedPos({ x, y, temp })
+      }
       redrawCanvas()
     }
   }
@@ -435,10 +460,21 @@ export default function ThermalViewerPage() {
 
   const toggleDrawingMode = () => {
     setDrawingMode(!drawingMode)
+    setDeltaMode(false) // Delta Mode OFF
     setCurrentLine(null)
     setIsDrawing(false)
     if (!drawingMode) {
-      setClickedPos(null) // 라인 모드 진입 시 점 측정 초기화
+      setClickedPos(null)
+      setDeltaPoints([])
+    }
+  }
+
+  const toggleDeltaMode = () => {
+    setDeltaMode(!deltaMode)
+    setDrawingMode(false) // Drawing Mode OFF
+    setDeltaPoints([])
+    if (!deltaMode) {
+      setClickedPos(null)
     }
   }
 
@@ -525,6 +561,53 @@ export default function ThermalViewerPage() {
       ctx.lineTo(clickedPos.x * scaleX, clickedPos.y * scaleY + 20)
       ctx.stroke()
     }
+
+    // Delta T Visualization
+    if (deltaPoints.length > 0) {
+      deltaPoints.forEach((p, i) => {
+        // Point
+        ctx.fillStyle = i === 0 ? "#3b82f6" : "#ef4444" // Blue for Ref, Red for Target
+        ctx.beginPath()
+        ctx.arc(p.x * scaleX, p.y * scaleY, 6, 0, 2 * Math.PI)
+        ctx.fill()
+        ctx.strokeStyle = "white"
+        ctx.lineWidth = 2
+        ctx.stroke()
+
+        // Label
+        ctx.fillStyle = "white"
+        ctx.font = "bold 14px sans-serif"
+        ctx.fillText(i === 0 ? "Ref" : "Tgt", p.x * scaleX + 10, p.y * scaleY)
+      })
+
+      // Line connecting points
+      if (deltaPoints.length === 2) {
+        const p1 = deltaPoints[0]
+        const p2 = deltaPoints[1]
+
+        ctx.strokeStyle = "white"
+        ctx.lineWidth = 2
+        ctx.setLineDash([5, 5])
+        ctx.beginPath()
+        ctx.moveTo(p1.x * scaleX, p1.y * scaleY)
+        ctx.lineTo(p2.x * scaleX, p2.y * scaleY)
+        ctx.stroke()
+        ctx.setLineDash([])
+
+        // Draw Delta Text at midpoint
+        const midX = (p1.x + p2.x) / 2 * scaleX
+        const midY = (p1.y + p2.y) / 2 * scaleY
+        const delta = Math.abs(p2.temp - p1.temp).toFixed(2)
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)"
+        ctx.fillRect(midX - 40, midY - 15, 80, 30)
+        ctx.fillStyle = "#fbbf24" // Amber
+        ctx.font = "bold 16px sans-serif"
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        ctx.fillText(`Δ ${delta}°C`, midX, midY)
+      }
+    }
   }
 
   // 이미지가 로드되면 캔버스에 그리기
@@ -547,7 +630,7 @@ export default function ThermalViewerPage() {
   // 라인이나 클릭 위치가 변경되면 재그리기
   useEffect(() => {
     redrawCanvas()
-  }, [lines, clickedPos, currentLine, drawingMode])
+  }, [lines, clickedPos, currentLine, drawingMode, deltaPoints, showIsotherm, isothermThreshold])
 
   return (
     <div className="min-h-screen bg-background">
@@ -782,6 +865,48 @@ export default function ThermalViewerPage() {
                     <div className="text-sm text-muted-foreground">
                       {drawingMode ? "드래그하여 라인 그리기" : "클릭하여 온도 측정"}
                     </div>
+
+                    {/* Isotherm Toggle */}
+                    <Button
+                      variant={showIsotherm ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        const newMode = !showIsotherm
+                        setShowIsotherm(newMode)
+                        if (newMode && result.stats) {
+                          // 기본값: 평균 온도
+                          setIsothermThreshold(result.stats.mean)
+                        }
+                      }}
+                      className={showIsotherm ? "bg-red-600 hover:bg-red-700" : "ml-2 border-red-200 bg-red-50 text-red-600 hover:bg-red-100"}
+                    >
+                      <Flame className="mr-2 h-4 w-4" />
+                      {showIsotherm ? "등온선 끄기" : "등온선(Isotherm)"}
+                    </Button>
+
+                    {/* Delta Mode Button */}
+                    <Button
+                      variant={deltaMode ? "default" : "outline"}
+                      size="sm"
+                      onClick={toggleDeltaMode}
+                      className={deltaMode ? "ml-2 bg-purple-600 hover:bg-purple-700" : "ml-2 border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100"}
+                    >
+                      <Scale className="mr-2 h-4 w-4" />
+                      온도차 분석 (Delta T)
+                    </Button>
+
+                    {/* 위치 확인 버튼 added */}
+                    {isDbMode && dbImageInfo?.gps_latitude && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowMap(true)}
+                        className="ml-2 border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                      >
+                        <MapIcon className="mr-2 h-4 w-4" />
+                        실화상 위치 확인
+                      </Button>
+                    )}
                   </div>
                 </div>
 
@@ -807,6 +932,31 @@ export default function ThermalViewerPage() {
                     </div>
                   )}
                 </div>
+
+
+
+                {/* Isotherm Slider */}
+                {showIsotherm && result.stats && (
+                  <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="font-bold text-red-900">🌡️ 등온선 임계값 설정</span>
+                      <span className="text-sm font-bold text-red-700">{isothermThreshold.toFixed(1)}°C 이상 표시</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={result.stats.min}
+                      max={result.stats.max}
+                      step={0.1}
+                      value={isothermThreshold}
+                      onChange={(e) => setIsothermThreshold(parseFloat(e.target.value))}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-red-200 accent-red-600"
+                    />
+                    <div className="mt-1 flex justify-between text-xs text-red-600">
+                      <span>{result.stats.min}°C</span>
+                      <span>{result.stats.max}°C</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* 캔버스 */}
                 <div className="relative overflow-hidden rounded-lg border border-border bg-black">
@@ -973,8 +1123,35 @@ export default function ThermalViewerPage() {
             </div>
           </Card>
         </div>
-      </main>
-    </div>
+      </main >
+
+      {/* 지도 모달 */}
+      {
+        showMap && dbImageInfo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="relative h-[80vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b px-6 py-4">
+                <h3 className="text-xl font-bold">📍 실화상 위치 (지도)</h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowMap(false)}
+                  className="rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-6 w-6" />
+                </Button>
+              </div>
+              <div className="h-[calc(100%-64px)] w-full">
+                <KakaoMapViewer
+                  latitude={parseFloat(dbImageInfo.gps_latitude)}
+                  longitude={parseFloat(dbImageInfo.gps_longitude)}
+                />
+              </div>
+            </div>
+          </div>
+        )
+      }
+    </div >
   )
 }
 
