@@ -11,6 +11,9 @@ echo ""
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
+# Ensure basic system tools are available
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 # Add local tools to PATH
 export PATH="$DIR/tools/node/bin:$PATH"
 

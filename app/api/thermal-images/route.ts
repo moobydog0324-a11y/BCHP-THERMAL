@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
            LEFT JOIN inspections i ON ti.inspection_id = i.inspection_id
            LEFT JOIN pipes p ON i.pipe_id = p.pipe_id
            ORDER BY ti.capture_timestamp DESC
-           LIMIT 100`
+           LIMIT 1000`
         )
       }
     } else {
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         result = await query<ThermalImage>(
           `SELECT * FROM thermal_images 
            ORDER BY capture_timestamp DESC
-           LIMIT 100`
+           LIMIT 1000`
         )
       }
     }

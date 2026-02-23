@@ -56,6 +56,10 @@ def find_exiftool():
     print("⚠️  ExifTool을 찾을 수 없습니다.")
     return None
 
+import os
+if "/usr/bin" not in os.environ.get("PATH", ""):
+    os.environ["PATH"] += os.pathsep + "/usr/bin"
+
 EXIFTOOL_PATH = find_exiftool()
 
 @app.route("/", methods=["GET"])
@@ -250,12 +254,12 @@ def extract_thermal_data(metadata):
     
     # FLIR 열화상 카메라 메타데이터
     thermal_fields = [
+        "Emissivity",
         "ObjectDistance",
-        "AtmosphericTemperature", 
+        "RelativeHumidity",
         "ReflectedApparentTemperature",
         "IRWindowTemperature",
         "IRWindowTransmission",
-        "RelativeHumidity",
         "PlanckR1",
         "PlanckB",
         "PlanckF",
@@ -265,7 +269,15 @@ def extract_thermal_data(metadata):
         "CameraTemperatureRangeMin",
         "CameraTemperatureMaxSaturation",
         "CameraTemperatureMinSaturation",
-        "Emissivity",
+        # DJI / Drone Specific
+        "GimbalPitchDegree",
+        "GimbalRollDegree",
+        "GimbalYawDegree",
+        "FlightPitchDegree",
+        "FlightRollDegree",
+        "FlightYawDegree",
+        "CentralTemperature",
+        "TlinearError",
     ]
     
     for field in thermal_fields:
@@ -339,8 +351,6 @@ def generate_thermal_image():
             # 컬러맵으로 이미지 생성
             print(f"\n🎨 컬러맵 '{colormap}' 적용 중...")
             
-            fig, ax = plt.subplots(figsize=(10, 8), dpi=100)
-            
             # 컬러맵 적용
             valid_colormaps = {
                 'jet': cm.jet,
@@ -357,23 +367,11 @@ def generate_thermal_image():
             
             cmap = valid_colormaps.get(colormap, cm.jet)
             
-            im = ax.imshow(thermal_np, cmap=cmap, aspect='auto')
-            
-            # 컬러바 추가
-            cbar = plt.colorbar(im, ax=ax, label='온도 (°C)')
-            
-            # 축 제거 (깔끔한 이미지)
-            ax.axis('off')
-            
-            plt.tight_layout()
-            
-            # 이미지를 바이트로 변환
+            # 이미지를 바이트로 변환 (여백/축 없이 원본 배열과 1:1 픽셀 매칭되도록 저장)
             img_buffer = io.BytesIO()
-            plt.savefig(img_buffer, format='png', bbox_inches='tight', dpi=150)
+            plt.imsave(img_buffer, thermal_np, cmap=cmap, format='png')
             img_buffer.seek(0)
             img_base64 = base64.b64encode(img_buffer.read()).decode('utf-8')
-            
-            plt.close(fig)
             
             # 온도 데이터를 리스트로 변환 (JSON 전송용)
             # 전체 데이터는 너무 크므로 압축된 형태로 전송

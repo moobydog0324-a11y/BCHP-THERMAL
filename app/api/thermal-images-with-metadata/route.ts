@@ -190,14 +190,42 @@ export async function POST(request: NextRequest) {
     if (metadata) {
       try {
         await query(
-          `INSERT INTO image_metadata (image_id, metadata_json, thermal_data_json)
-           VALUES ($1, $2, $3)
+          `INSERT INTO image_metadata (
+            image_id, metadata_json, thermal_data_json,
+            emissivity, object_distance, relative_humidity, reflected_apparent_temperature,
+            gimbal_pitch, gimbal_roll, gimbal_yaw,
+            flight_pitch, flight_roll, flight_yaw
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            ON CONFLICT (image_id) DO UPDATE 
-           SET metadata_json = $2, thermal_data_json = $3`,
+           SET 
+             metadata_json = $2, 
+             thermal_data_json = $3,
+             emissivity = $4,
+             object_distance = $5,
+             relative_humidity = $6,
+             reflected_apparent_temperature = $7,
+             gimbal_pitch = $8,
+             gimbal_roll = $9,
+             gimbal_yaw = $10,
+             flight_pitch = $11,
+             flight_roll = $12,
+             flight_yaw = $13`,
           [
             result.rows[0].image_id,
             JSON.stringify(metadata),
             JSON.stringify(thermal_metadata),
+            // Extended Metadata Columns
+            thermal_metadata?.Emissivity || null,
+            thermal_metadata?.ObjectDistance || null,
+            thermal_metadata?.RelativeHumidity || null,
+            thermal_metadata?.ReflectedApparentTemperature || null,
+            thermal_metadata?.GimbalPitchDegree || null,
+            thermal_metadata?.GimbalRollDegree || null,
+            thermal_metadata?.GimbalYawDegree || null,
+            thermal_metadata?.FlightPitchDegree || null,
+            thermal_metadata?.FlightRollDegree || null,
+            thermal_metadata?.FlightYawDegree || null
           ]
         )
       } catch (metaError) {

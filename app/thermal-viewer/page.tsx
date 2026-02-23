@@ -117,6 +117,15 @@ export default function ThermalViewerPage() {
     setLoading(true)
     setIsDbMode(true)
 
+    // 이전 이미지 분석 데이터 초기화 (유령 선/마커 제거)
+    setLines([])
+    setClickedPos(null)
+    setCurrentLine(null)
+    setDrawingMode(false)
+    setDeltaMode(false)
+    setDeltaPoints([])
+    setShowIsotherm(false)
+
     try {
       // 1. DB에서 이미지 정보 조회
       const response = await fetch(`/api/thermal-images?with_metadata=true`)
@@ -134,8 +143,17 @@ export default function ThermalViewerPage() {
 
       setDbImageInfo(imageData)
 
-      // 2. 이미지 URL에서 파일 다운로드
-      const imageResponse = await fetch(imageData.image_url)
+      // 2. 이미지 URL에서 파일 다운로드 (Proxy for CORS if absolute URL)
+      let fetchUrl = imageData.image_url?.trim()
+      console.log('Original Image URL:', fetchUrl)
+
+      if (fetchUrl && (fetchUrl.startsWith('http') || fetchUrl.includes('r2.dev') || fetchUrl.includes('supabase'))) {
+        fetchUrl = `/api/proxy-image?url=${encodeURIComponent(fetchUrl)}`
+        console.log('Using Proxy URL:', fetchUrl)
+      }
+
+      const imageResponse = await fetch(fetchUrl)
+      if (!imageResponse.ok) throw new Error(`Image download failed: ${imageResponse.statusText}`)
       const imageBlob = await imageResponse.blob()
 
       // Blob을 File 객체로 변환
@@ -339,7 +357,7 @@ export default function ThermalViewerPage() {
       formData.append("file", selectedFile)
       formData.append("colormap", colormap)
 
-      const response = await fetch("http://localhost:5000/generate-thermal-image", {
+      const response = await fetch("http://localhost:5001/generate-thermal-image", {
         method: "POST",
         body: formData,
       })
@@ -408,6 +426,18 @@ export default function ThermalViewerPage() {
 
     const x = Math.floor((e.clientX - rect.left) * (result!.width! / rect.width))
     const y = Math.floor((e.clientY - rect.top) * (result!.height! / rect.height))
+
+    // 드래그 거리가 너무 짧으면 무시 (점-라인 생성 방지)
+    const dx = x - currentLine.x1
+    const dy = y - currentLine.y1
+    const dist = Math.sqrt(dx * dx + dy * dy)
+
+    if (dist < 5) {
+      setIsDrawing(false)
+      setCurrentLine(null)
+      redrawCanvas()
+      return
+    }
 
     // 라인 분석
     const line = analyzeLine(currentLine.x1, currentLine.y1, x, y)
@@ -491,9 +521,36 @@ export default function ThermalViewerPage() {
     const scaleX = img.naturalWidth / result.width
     const scaleY = img.naturalHeight / result.height
 
-    // 이미지 다시 그리기
+    // 이미지 다시 그리기 (캔버스 해상도에 맞춰 꽉 차게 그림)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(img, 0, 0)
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+    // 등온선(Isotherm) 오버레이 그리기
+    if (showIsotherm && result.temperature_data) {
+      const isothermCanvas = document.createElement("canvas")
+      isothermCanvas.width = result.width
+      isothermCanvas.height = result.height
+      const isoCtx = isothermCanvas.getContext("2d")
+
+      if (isoCtx) {
+        const imgData = isoCtx.createImageData(result.width, result.height)
+        for (let i = 0; i < result.temperature_data.length; i++) {
+          if (result.temperature_data[i] >= isothermThreshold) {
+            imgData.data[i * 4] = 255     // R
+            imgData.data[i * 4 + 1] = 0   // G 
+            imgData.data[i * 4 + 2] = 255 // B (눈에 확 띄는 핫핑크/마젠타)
+            imgData.data[i * 4 + 3] = 255 // A (100% 불투명)
+          }
+        }
+
+        isoCtx.putImageData(imgData, 0, 0)
+
+        ctx.save()
+        // 캔버스 자체 크기에 맞게 오버레이 스케일링
+        ctx.drawImage(isothermCanvas, 0, 0, canvas.width, canvas.height)
+        ctx.restore()
+      }
+    }
 
     // 저장된 라인들 그리기
     lines.forEach((line) => {
@@ -619,13 +676,21 @@ export default function ThermalViewerPage() {
 
       if (!ctx) return
 
-      img.onload = () => {
-        canvas.width = img.naturalWidth
-        canvas.height = img.naturalHeight
+      const initializeCanvas = () => {
+        // 이제 백엔드에서 데이터 크기(예: 640x512)와 정확히 일치하는 1:1 이미지를 생성합니다.
+        // 캔버스 사이즈를 온도 데이터 배열 크기에 맞춥니다.
+        canvas.width = result.width || img.naturalWidth || 640
+        canvas.height = result.height || img.naturalHeight || 512
         redrawCanvas()
       }
+
+      if (img.complete && img.naturalWidth > 0) {
+        initializeCanvas()
+      } else {
+        img.onload = initializeCanvas
+      }
     }
-  }, [result?.image])
+  }, [result?.image, result?.width, result?.height])
 
   // 라인이나 클릭 위치가 변경되면 재그리기
   useEffect(() => {
@@ -849,21 +914,22 @@ export default function ThermalViewerPage() {
                       variant={drawingMode ? "default" : "outline"}
                       size="sm"
                       onClick={toggleDrawingMode}
+                      className={drawingMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}
                     >
                       {drawingMode ? (
                         <>
                           <MousePointer2 className="mr-2 h-4 w-4" />
-                          포인트 모드로 전환
+                          라인 그리기 중... (취소)
                         </>
                       ) : (
                         <>
                           <Minus className="mr-2 h-4 w-4" />
-                          라인 그리기 모드
+                          라인 그리기 시작
                         </>
                       )}
                     </Button>
-                    <div className="text-sm text-muted-foreground">
-                      {drawingMode ? "드래그하여 라인 그리기" : "클릭하여 온도 측정"}
+                    <div className="text-sm font-medium text-muted-foreground w-20">
+                      {/* Placeholder for spacing */}
                     </div>
 
                     {/* Isotherm Toggle */}
@@ -889,10 +955,10 @@ export default function ThermalViewerPage() {
                       variant={deltaMode ? "default" : "outline"}
                       size="sm"
                       onClick={toggleDeltaMode}
-                      className={deltaMode ? "ml-2 bg-purple-600 hover:bg-purple-700" : "ml-2 border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100"}
+                      className={deltaMode ? "ml-2 bg-purple-600 hover:bg-purple-700 text-white" : "ml-2 border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100"}
                     >
                       <Scale className="mr-2 h-4 w-4" />
-                      온도차 분석 (Delta T)
+                      {deltaMode ? "온도차 분석 중... (취소)" : "온도차 분석 (Delta T)"}
                     </Button>
 
                     {/* 위치 확인 버튼 added */}
@@ -948,7 +1014,10 @@ export default function ThermalViewerPage() {
                       max={result.stats.max}
                       step={0.1}
                       value={isothermThreshold}
-                      onChange={(e) => setIsothermThreshold(parseFloat(e.target.value))}
+                      onChange={(e) => {
+                        setIsothermThreshold(parseFloat(e.target.value))
+                        setShowIsotherm(true) // 슬라이더 조작 시 자동으로 켜짐
+                      }}
                       className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-red-200 accent-red-600"
                     />
                     <div className="mt-1 flex justify-between text-xs text-red-600">
@@ -958,8 +1027,18 @@ export default function ThermalViewerPage() {
                   </div>
                 )}
 
-                {/* 캔버스 */}
-                <div className="relative overflow-hidden rounded-lg border border-border bg-black">
+                {/* 캔버스 & 오버레이 */}
+                <div className="relative mx-auto w-2/3 overflow-hidden rounded-lg border border-border bg-black">
+                  {/* 조작 가이드 오버레이 */}
+                  {(drawingMode || deltaMode) && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-sm pointer-events-none">
+                      {drawingMode && "🖱️ 캔버스를 드래그하여 라인을 그리세요"}
+                      {deltaMode && deltaPoints.length === 0 && "📌 온도차 분석: 기준점(Ref)을 클릭하세요"}
+                      {deltaMode && deltaPoints.length === 1 && "📌 온도차 분석: 비교점(Tgt)을 클릭하세요"}
+                      {deltaMode && deltaPoints.length === 2 && "✅ 분석 완료 (취소 버튼으로 초기화하세요)"}
+                    </div>
+                  )}
+
                   <canvas
                     ref={canvasRef}
                     onMouseMove={handleCanvasMouseMove}
@@ -974,6 +1053,7 @@ export default function ThermalViewerPage() {
                     src={result.image}
                     alt="Thermal"
                     className="hidden"
+                    onLoad={redrawCanvas}
                   />
                 </div>
 
