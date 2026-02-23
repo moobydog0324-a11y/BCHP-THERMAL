@@ -580,7 +580,11 @@ export default function ComparePage() {
                   {getDateMatchedGroups().map(({ group, baseImg, targetImg }) => {
                     const tempDiff = getMaxTemp(targetImg!) - getMaxTemp(baseImg!)
                     return (
-                      <Card key={group.id} className="p-4 hover:shadow-lg transition-all">
+                      <Card
+                        key={group.id}
+                        className="p-4 hover:shadow-lg transition-all cursor-pointer"
+                        onClick={() => setPopupLocation(group)}
+                      >
                         <div className="flex justify-between items-center mb-3">
                           <h3 className="font-bold">{group.name}</h3>
                           <div className={`text-sm font-bold px-2 py-1 rounded ${tempDiff > 0 ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
