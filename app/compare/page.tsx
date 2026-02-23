@@ -594,14 +594,14 @@ export default function ComparePage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <div className="text-xs text-muted-foreground">{baseDate}</div>
-                            <div className="aspect-video relative bg-slate-100 rounded overflow-hidden cursor-pointer" onClick={() => openDetailViewer(baseImg!.image_id)}>
+                            <div className="aspect-video relative bg-slate-100 rounded overflow-hidden">
                               <Image src={baseImg!.thumbnail_url || baseImg!.image_url} alt="" fill className="object-cover" />
                             </div>
                             <div className="text-xs font-bold text-right">{getMaxTemp(baseImg!).toFixed(1)}°C</div>
                           </div>
                           <div className="space-y-1">
                             <div className="text-xs text-muted-foreground">{targetDate}</div>
-                            <div className="aspect-video relative bg-slate-100 rounded overflow-hidden cursor-pointer" onClick={() => openDetailViewer(targetImg!.image_id)}>
+                            <div className="aspect-video relative bg-slate-100 rounded overflow-hidden">
                               <Image src={targetImg!.thumbnail_url || targetImg!.image_url} alt="" fill className="object-cover" />
                             </div>
                             <div className="text-xs font-bold text-right">{getMaxTemp(targetImg!).toFixed(1)}°C</div>
