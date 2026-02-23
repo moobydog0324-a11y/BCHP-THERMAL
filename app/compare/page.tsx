@@ -15,7 +15,8 @@ import {
   Calendar,
   Split,
   LineChart as LineChartIcon,
-  BarChart2
+  BarChart2,
+  X
 } from "lucide-react"
 import {
   LineChart,
@@ -95,6 +96,11 @@ export default function ComparePage() {
 
   // Profile Mode States (For Sequential Analysis)
   const [selectedCompareDates, setSelectedCompareDates] = useState<string[]>([])
+
+  // Modal Popup States
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalType, setModalType] = useState<'single' | 'compare'>('single')
+  const [modalTitle, setModalTitle] = useState('')
 
   const sections: SectionCategory[] = [
     'A-1', 'A-2', 'B-1', 'B-2', 'C-1', 'C-2', 'D-1', 'D-2',
@@ -275,16 +281,38 @@ export default function ComparePage() {
     })
   }
 
-  const handleImageSelect = (img: ThermalImage) => {
-    if (compareImages.find(i => i.image_id === img.image_id)) {
-      setCompareImages(prev => prev.filter(i => i.image_id !== img.image_id))
+  const handleImageSelect = (img: ThermalImage, type: 'single' | 'compare' = 'single') => {
+    if (type === 'single') {
+      setCompareImages([img])
+      setModalType('single')
+      setModalTitle(`${new Date(img.capture_timestamp).toLocaleString()} 데이터 상세 보기`)
+      setIsModalOpen(true)
     } else {
-      if (compareImages.length < 2) {
-        setCompareImages(prev => [...prev, img])
+      if (compareImages.find(i => i.image_id === img.image_id)) {
+        setCompareImages(prev => prev.filter(i => i.image_id !== img.image_id))
       } else {
-        setCompareImages(prev => [prev[1], img])
+        if (compareImages.length < 2) {
+          setCompareImages(prev => [...prev, img])
+        } else {
+          setCompareImages(prev => [prev[1], img])
+        }
       }
     }
+  }
+
+  // Handle Opening Compare Modal
+  useEffect(() => {
+    if (compareImages.length === 2 && !isModalOpen) {
+      setModalType('compare')
+      setModalTitle('열화상 이미지 시계열 비교')
+      setIsModalOpen(true)
+    }
+  }, [compareImages, isModalOpen])
+
+  // Handle Closing Modal
+  const closeModal = () => {
+    setIsModalOpen(false)
+    setCompareImages([])
   }
 
   const openDetailViewer = (imageId: number) => {
@@ -607,6 +635,111 @@ export default function ComparePage() {
           </>
         )}
       </main>
+
+      {/* Custom Modal Popup */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 md:p-8 overflow-y-auto">
+          <div className="bg-card w-full max-w-6xl rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center p-4 md:p-6 border-b">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Search className="h-5 w-5 text-primary" /> {modalTitle}
+              </h2>
+              <Button variant="ghost" size="icon" onClick={closeModal} className="rounded-full hover:bg-muted">
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="p-4 md:p-6 overflow-y-auto flex-1">
+              {modalType === 'single' && compareImages[0] && (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                  <div className="lg:col-span-3 aspect-video relative rounded-lg overflow-hidden bg-black flex items-center justify-center">
+                    <img src={compareImages[0].image_url} alt="Thermal Image" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div className="space-y-4">
+                    <Card className="p-4 bg-muted/50">
+                      <h3 className="font-bold border-b pb-2 mb-3">상세 정보</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">구간</span>
+                          <span className="font-medium text-primary">{compareImages[0].section_category}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">촬영 일시</span>
+                          <span className="text-right">{new Date(compareImages[0].capture_timestamp).toLocaleString()}</span>
+                        </div>
+                        {compareImages[0].camera_model && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">카메라 기종</span>
+                            <span>{compareImages[0].camera_model}</span>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                    <Card className="p-4 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900">
+                      <h3 className="font-bold text-red-800 dark:text-red-400 border-b border-red-200 dark:border-red-800 pb-2 mb-3 flex items-center gap-1">
+                        <Thermometer className="h-4 w-4" /> 온도 분석
+                      </h3>
+                      <div className="text-center py-4">
+                        <div className="text-4xl font-black text-red-600 dark:text-red-500">
+                          {getMaxTemp(compareImages[0]).toFixed(1)}°C
+                        </div>
+                        <div className="text-sm text-red-800/70 mt-1">최고 온도</div>
+                      </div>
+                    </Card>
+                    <Button className="w-full" onClick={() => openDetailViewer(compareImages[0].image_id)}>
+                      <Activity className="h-4 w-4 mr-2" /> 상세 분석 페이지로 이동
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {modalType === 'compare' && compareImages.length === 2 && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {compareImages.map((img, idx) => {
+                      const temp = getMaxTemp(img)
+                      const isHotter = idx === 1 ? temp > getMaxTemp(compareImages[0]) : temp > getMaxTemp(compareImages[1])
+
+                      return (
+                        <div key={img.image_id} className="space-y-3">
+                          <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+                            <div className="font-bold text-lg">
+                              #{idx + 1} {new Date(img.capture_timestamp).toLocaleDateString()}
+                            </div>
+                            <div className={`font-bold text-xl px-3 py-1 rounded-full ${isHotter ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
+                              {temp.toFixed(1)}°C
+                            </div>
+                          </div>
+                          <div className="aspect-video relative rounded-lg overflow-hidden bg-black flex items-center justify-center border-2 border-border">
+                            <img src={img.image_url} alt={`Compare ${idx + 1}`} className="max-w-full max-h-full object-contain" />
+                          </div>
+                          <Button variant="outline" className="w-full" onClick={() => openDetailViewer(img.image_id)}>
+                            <Search className="h-4 w-4 mr-2" /> 이 이미지 상세 보기
+                          </Button>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <Card className="p-4 bg-muted/50 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="font-medium text-lg">
+                      온도 변화량 <span className="mx-2">👉</span>
+                    </div>
+                    <div className="text-2xl font-black flex items-center gap-2">
+                      {(() => {
+                        const diff = getMaxTemp(compareImages[1]) - getMaxTemp(compareImages[0])
+                        if (diff > 0) return <><span className="text-red-600">▲ {diff.toFixed(1)}°C</span> (상승)</>
+                        if (diff < 0) return <><span className="text-blue-600">▼ {Math.abs(diff).toFixed(1)}°C</span> (하락)</>
+                        return <span>- 0.0°C (변화 없음)</span>
+                      })()}
+                    </div>
+                  </Card>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
