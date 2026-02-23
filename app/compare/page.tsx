@@ -449,7 +449,7 @@ export default function ComparePage() {
 
             {/* TREND MODE */}
             {mode === 'trend' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                 <div className="lg:col-span-1 space-y-4 h-[calc(100vh-140px)] overflow-y-auto pr-2">
                   <h2 className="font-semibold flex items-center gap-2">
                     <MapPin className="h-5 w-5" /> 분석 위치 선택
@@ -477,7 +477,7 @@ export default function ComparePage() {
                     </Card>
                   ))}
                 </div>
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-3 space-y-6">
                   {selectedLocation ? (
                     <>
                       <Card className="p-6">
