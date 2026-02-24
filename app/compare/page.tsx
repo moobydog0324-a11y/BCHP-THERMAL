@@ -560,14 +560,14 @@ export default function ComparePage() {
                 <Card className="p-6 bg-accent/20">
                   <div className="flex flex-col md:flex-row gap-6 items-end">
                     <div className="flex-1 space-y-2 w-full">
-                      <label className="text-sm font-semibold">기준 날짜 (과거)</label>
+                      <label className="text-sm font-semibold">기준 날짜</label>
                       <select className="w-full p-2 rounded-md border text-sm" value={baseDate} onChange={(e) => setBaseDate(e.target.value)}>
                         <option value="">날짜 선택</option>
                         {availableDates.map(d => <option key={d} value={d}>{d}</option>)}
                       </select>
                     </div>
                     <div className="flex-1 space-y-2 w-full">
-                      <label className="text-sm font-semibold">비교 날짜 (최신)</label>
+                      <label className="text-sm font-semibold">비교 날짜</label>
                       <select className="w-full p-2 rounded-md border text-sm" value={targetDate} onChange={(e) => setTargetDate(e.target.value)}>
                         <option value="">날짜 선택</option>
                         {availableDates.map(d => <option key={d} value={d}>{d}</option>)}
