@@ -199,25 +199,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats Section */}
-      <section className="border-y border-border bg-card/50">
-        <div className="container mx-auto px-6 py-16">
-          <div className="grid gap-8 md:grid-cols-3">
-            <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-primary">100%</div>
-              <div className="text-sm text-muted-foreground">자동 메타데이터 추출</div>
-            </div>
-            <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-accent">GPS 기반</div>
-              <div className="text-sm text-muted-foreground">위치별 시계열 비교</div>
-            </div>
-            <div className="text-center">
-              <div className="mb-2 text-4xl font-bold text-primary">실시간</div>
-              <div className="text-sm text-muted-foreground">온도 정보 추적</div>
-            </div>
-          </div>
-        </div>
-      </section>
+
 
       {/* Footer */}
       <footer className="border-t border-border bg-card">
