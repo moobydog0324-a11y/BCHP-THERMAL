@@ -425,7 +425,15 @@ export default function ComparePage() {
                     </h3>
                     <div className="h-[400px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={getProfileChartData()}>
+                        <LineChart data={getProfileChartData()} onClick={(e) => {
+                          if (e && e.activePayload && e.activePayload[0]) {
+                            const group = e.activePayload[0].payload.fullGroup;
+                            if (group) {
+                              setSelectedLocation(group);
+                              setPopupLocation(group);
+                            }
+                          }
+                        }} style={{ cursor: 'pointer' }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="name" label={{ value: '지점', position: 'insideBottomRight', offset: -5 }} />
                           <YAxis label={{ value: '온도(°C)', angle: -90, position: 'insideLeft' }} />
