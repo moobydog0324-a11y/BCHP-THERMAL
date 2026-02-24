@@ -105,49 +105,49 @@ export default function HomePage() {
       <section className="container mx-auto px-6 py-16">
         <h3 className="mb-8 text-center text-2xl font-bold text-foreground">주요 기능</h3>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <Link href="/data">
-            <Card className="border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
+          <Link href="/data" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                 <Database className="h-6 w-6 text-primary" />
               </div>
               <h3 className="mb-2 text-lg font-bold text-card-foreground">💾 데이터 관리</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
                 GPS, 온도, 메타데이터가 포함된 모든 열화상 이미지를 한눈에 확인하고 관리합니다.
               </p>
             </Card>
           </Link>
 
-          <Link href="/upload">
-            <Card className="border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
+          <Link href="/upload" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-purple-500/10">
                 <ImageIcon className="h-6 w-6 text-purple-600" />
               </div>
               <h3 className="mb-2 text-lg font-bold text-card-foreground">📤 이미지 업로드</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
                 열화상 이미지 업로드 시 자동으로 GPS 좌표, 온도, 카메라 정보를 추출하여 저장합니다.
               </p>
             </Card>
           </Link>
 
-          <Link href="/thermal-analysis">
-            <Card className="border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
+          <Link href="/thermal-analysis" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-orange-500/10">
                 <Thermometer className="h-6 w-6 text-orange-600" />
               </div>
               <h3 className="mb-2 text-lg font-bold text-card-foreground">🔥 열화상 분석</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
                 DB에 저장된 열화상 이미지를 불러와 정밀 온도 분석 및 시각화를 수행합니다.
               </p>
             </Card>
           </Link>
 
-          <Link href="/compare">
-            <Card className="border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
+          <Link href="/compare" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl cursor-pointer">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                 <LineChart className="h-6 w-6 text-primary" />
               </div>
               <h3 className="mb-2 text-lg font-bold text-card-foreground">📊 GPS 기반 비교</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
                 동일한 GPS 위치에서 촬영된 이미지들을 시계열로 비교하여 온도 변화를 분석합니다.
               </p>
             </Card>
