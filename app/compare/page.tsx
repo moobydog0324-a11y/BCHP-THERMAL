@@ -119,8 +119,9 @@ export default function ComparePage() {
   useEffect(() => {
     if (locationGroups.length > 0) {
       const isSeq = locationGroups[0].id.startsWith('seq-')
-      // 데이터가 순차적이면 프로파일 모드, 아니면 트렌드 모드 기본
-      setMode(isSeq ? 'profile' : 'trend')
+      // 구역을 변경해도 현재 선택된 탭(mode)을 유지하도록 수정
+      // 단, 프로파일 모드는 순차 데이터(isSeq)일 때만 유효하므로, 아닐 경우 트렌드 모드로 변경
+      setMode(prev => (prev === 'profile' && !isSeq) ? 'trend' : prev)
 
       if (availableDates.length > 0) {
         // 프로파일용 기본 날짜 (최신 3개)
