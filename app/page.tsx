@@ -59,7 +59,7 @@ export default function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-6 py-20">
+      <section className="container mx-auto px-6 pt-20 pb-10">
         <div className="mx-auto max-w-4xl text-center">
           <h2 className="mb-6 text-5xl font-bold leading-tight text-balance text-foreground">
             열화상 데이터로
@@ -95,14 +95,12 @@ export default function HomePage() {
               </Button>
             </Link>
           </div>
-          <p className="mt-6 text-sm text-muted-foreground">
-            💡 간단한 3단계: 이미지 업로드 → 데이터 확인 → GPS 기반 비교
-          </p>
+
         </div>
       </section>
 
       {/* Features Grid */}
-      <section className="container mx-auto px-6 py-16">
+      <section className="container mx-auto px-6 py-8">
         <h3 className="mb-8 text-center text-2xl font-bold text-foreground">주요 기능</h3>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <Link href="/data" className="flex h-full w-full">
