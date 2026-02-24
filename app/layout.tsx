@@ -28,6 +28,8 @@ export const metadata: Metadata = {
   },
 }
 
+import Script from 'next/script'
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,6 +38,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans antialiased`}>
+        <Script
+          src="//dapi.kakao.com/v2/maps/sdk.js?appkey=ab078a7e191331be76723480bb11bb50&libraries=services,clusterer,drawing&autoload=false"
+          strategy="beforeInteractive"
+        />
         {children}
         <Analytics />
       </body>

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
+import KakaoMap from "@/components/KakaoMap"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
@@ -650,27 +651,40 @@ export default function ComparePage() {
                 if (displayImages.length === 1) gridClass = "grid-cols-1 max-w-2xl w-full mx-auto"
                 else if (displayImages.length === 2) gridClass = "grid-cols-1 md:grid-cols-2 max-w-4xl w-full mx-auto"
 
+                const hasGps = popupLocation.latitude !== 0 && popupLocation.longitude !== 0
+
                 return (
-                  <div className={`grid gap-6 ${gridClass}`}>
-                    {displayImages.map((img) => (
-                      <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
-                        <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
-                          <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
-                          <div className="text-sm text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                        </div>
-                        <div className="aspect-[4/3] relative bg-black cursor-pointer group" onClick={() => openDetailViewer(img.image_id)}>
-                          <Image src={img.image_url} alt="Thermal" fill className="object-cover" />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all">
-                            <div className="opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all bg-white text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
-                              <Search className="h-4 w-4" /> 세부 분석
+                  <div className="w-full flex flex-col">
+                    {hasGps && (
+                      <div className="w-full mb-6">
+                        <KakaoMap
+                          latitude={popupLocation.latitude}
+                          longitude={popupLocation.longitude}
+                          height="200px"
+                        />
+                      </div>
+                    )}
+                    <div className={`grid gap-6 ${gridClass}`}>
+                      {displayImages.map((img) => (
+                        <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
+                          <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
+                            <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
+                            <div className="text-sm text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                          </div>
+                          <div className="aspect-[4/3] relative bg-black cursor-pointer group" onClick={() => openDetailViewer(img.image_id)}>
+                            <Image src={img.image_url} alt="Thermal" fill className="object-cover" />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all">
+                              <div className="opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all bg-white text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
+                                <Search className="h-4 w-4" /> 세부 분석
+                              </div>
+                            </div>
+                            <div className="absolute top-2 right-2 bg-black/70 text-white text-lg font-bold px-2 py-1 rounded backdrop-blur-sm">
+                              {getMaxTemp(img).toFixed(1)}°C
                             </div>
                           </div>
-                          <div className="absolute top-2 right-2 bg-black/70 text-white text-lg font-bold px-2 py-1 rounded backdrop-blur-sm">
-                            {getMaxTemp(img).toFixed(1)}°C
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      ))}
+                    </div>
                   </div>
                 )
               })()}

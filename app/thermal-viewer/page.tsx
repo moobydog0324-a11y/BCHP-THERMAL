@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
 import { Activity, ArrowLeft, Upload, Loader2, Thermometer, MousePointer2, Minus, Trash2, Plus, Database, Map as MapIcon, X, Flame, Scale } from "lucide-react"
-import KakaoMapViewer from "@/components/KakaoMapViewer"
+import KakaoMap from "@/components/KakaoMap"
 
 type ThermalResult = {
   success: boolean
@@ -1222,9 +1222,10 @@ export default function ThermalViewerPage() {
                 </Button>
               </div>
               <div className="h-[calc(100%-64px)] w-full">
-                <KakaoMapViewer
+                <KakaoMap
                   latitude={parseFloat(dbImageInfo.gps_latitude)}
                   longitude={parseFloat(dbImageInfo.gps_longitude)}
+                  height="100%"
                 />
               </div>
             </div>
