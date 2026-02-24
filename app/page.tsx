@@ -155,49 +155,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 열화상 분석 도구 */}
-      <section className="bg-muted/50 py-16">
-        <div className="container mx-auto px-6">
-          <h3 className="mb-8 text-center text-2xl font-bold text-foreground">🔬 정밀 열화상 분석 도구</h3>
-          <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-3">
-            <Link href="/thermal-analysis">
-              <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10">
-                  <Database className="h-6 w-6 text-blue-600" />
-                </div>
-                <h4 className="mb-2 text-lg font-semibold text-card-foreground">DB 이미지 목록</h4>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  저장된 모든 열화상 이미지 조회 및 구간별 필터링
-                </p>
-              </Card>
-            </Link>
 
-            <Link href="/thermal-viewer">
-              <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-purple-500/10">
-                  <Palette className="h-6 w-6 text-purple-600" />
-                </div>
-                <h4 className="mb-2 text-lg font-semibold text-card-foreground">열화상 시각화</h4>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  10가지 컬러 팔레트로 온도 시각화 및 라인 측정
-                </p>
-              </Card>
-            </Link>
-
-            <Link href="/exif-test">
-              <Card className="border-border bg-card p-6 transition-all hover:shadow-lg cursor-pointer">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/10">
-                  <FileSearch className="h-6 w-6 text-green-600" />
-                </div>
-                <h4 className="mb-2 text-lg font-semibold text-card-foreground">메타데이터 분석</h4>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  카테고리별 정리된 정밀 메타데이터 확인
-                </p>
-              </Card>
-            </Link>
-          </div>
-        </div>
-      </section>
 
 
 
