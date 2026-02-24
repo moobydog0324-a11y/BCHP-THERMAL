@@ -632,31 +632,40 @@ export default function ComparePage() {
               </Button>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {(mode === 'date'
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col items-center">
+              {(() => {
+                const displayImages = mode === 'date'
                   ? popupLocation.images.filter(img => img.capture_timestamp.startsWith(baseDate) || img.capture_timestamp.startsWith(targetDate))
                   : popupLocation.images
-                ).map((img) => (
-                  <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
-                    <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
-                      <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
-                      <div className="text-sm text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                    </div>
-                    <div className="aspect-[4/3] relative bg-black cursor-pointer group" onClick={() => openDetailViewer(img.image_id)}>
-                      <Image src={img.image_url} alt="Thermal" fill className="object-cover" />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all">
-                        <div className="opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all bg-white text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
-                          <Search className="h-4 w-4" /> 세부 분석
+
+                let gridClass = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full"
+                if (displayImages.length === 1) gridClass = "grid-cols-1 max-w-2xl w-full mx-auto"
+                else if (displayImages.length === 2) gridClass = "grid-cols-1 md:grid-cols-2 max-w-4xl w-full mx-auto"
+
+                return (
+                  <div className={`grid gap-6 ${gridClass}`}>
+                    {displayImages.map((img) => (
+                      <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
+                        <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
+                          <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
+                          <div className="text-sm text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                         </div>
-                      </div>
-                      <div className="absolute top-2 right-2 bg-black/70 text-white text-lg font-bold px-2 py-1 rounded backdrop-blur-sm">
-                        {getMaxTemp(img).toFixed(1)}°C
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+                        <div className="aspect-[4/3] relative bg-black cursor-pointer group" onClick={() => openDetailViewer(img.image_id)}>
+                          <Image src={img.image_url} alt="Thermal" fill className="object-cover" />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition-all">
+                            <div className="opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all bg-white text-black px-4 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
+                              <Search className="h-4 w-4" /> 세부 분석
+                            </div>
+                          </div>
+                          <div className="absolute top-2 right-2 bg-black/70 text-white text-lg font-bold px-2 py-1 rounded backdrop-blur-sm">
+                            {getMaxTemp(img).toFixed(1)}°C
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
