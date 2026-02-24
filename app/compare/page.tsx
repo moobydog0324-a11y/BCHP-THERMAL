@@ -634,7 +634,10 @@ export default function ComparePage() {
 
             <div className="p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {popupLocation.images.map((img) => (
+                {(mode === 'date'
+                  ? popupLocation.images.filter(img => img.capture_timestamp.startsWith(baseDate) || img.capture_timestamp.startsWith(targetDate))
+                  : popupLocation.images
+                ).map((img) => (
                   <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
                     <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
                       <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
