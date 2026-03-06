@@ -19,9 +19,11 @@ export async function POST(request: NextRequest) {
       SELECT 
         ti.image_id,
         ti.image_url,
-        ti.section_category,
+        p.section_category,
         im.thermal_data_json
       FROM thermal_images ti
+      JOIN inspections i ON ti.inspection_id = i.inspection_id
+      JOIN pipes p ON i.pipe_id = p.pipe_id
       LEFT JOIN image_metadata im ON ti.image_id = im.image_id
       WHERE ti.image_type = 'thermal'
       ORDER BY ti.image_id ASC

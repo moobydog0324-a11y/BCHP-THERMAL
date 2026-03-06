@@ -20,9 +20,11 @@ import {
   AlertOctagon,
   Info,
   Trash2,
-  Square
+  Square,
+  MapPin
 } from "lucide-react"
 import { ThermalROIAnalyzer } from "@/components/ThermalROIAnalyzer"
+import KakaoMap from "@/components/KakaoMap"
 
 type ThermalImage = {
   image_id: number
@@ -98,6 +100,7 @@ export default function DataManagementPage() {
   // ✅ 삭제 완료 팝업 상태 추가
   const [showDeleteComplete, setShowDeleteComplete] = useState(false)
   const [deleteResult, setDeleteResult] = useState<{ count: number; message: string } | null>(null)
+  const [mapModalImage, setMapModalImage] = useState<ThermalImage | null>(null) // ✅ 카카오맵 모달 상태
 
 
   const sections: SectionCategory[] = [
@@ -898,28 +901,12 @@ export default function DataManagementPage() {
             {filteredImages.map((img) => (
               <Card
                 key={img.image_id}
-                className={`group cursor-pointer overflow-hidden border transition-all hover:shadow-lg relative
+                className={`group cursor-pointer overflow-hidden border transition-all hover:shadow-lg flex flex-col
                     ${selectedIds.includes(img.image_id) ? 'border-primary ring-2 ring-primary bg-primary/5' : 'border-border bg-card'}
                 `}
                 onClick={() => setSelectedImage(img)}
               >
-                {/* ✅ 선택 체크박스 (절대 위치) */}
-                <div
-                  className="absolute top-2 left-2 z-10"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    toggleSelect(img.image_id)
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    className="w-5 h-5 accent-primary cursor-pointer shadow-sm"
-                    checked={selectedIds.includes(img.image_id)}
-                    onChange={() => { }} // onClick에서 처리
-                  />
-                </div>
-
-                {/* 이미지 */}
+                {/* 이미지 영역 */}
                 <div className="relative aspect-video overflow-hidden bg-muted">
                   <Image
                     src={img.image_url}
@@ -927,17 +914,48 @@ export default function DataManagementPage() {
                     fill
                     className="object-cover transition-transform group-hover:scale-105"
                   />
-                  <div className="absolute left-9 top-2 rounded bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
-                    {img.section_category}
+
+                  {/* 상단 오버레이 (구역 태그와 체크박스를 이미지 안쪽 상단에 배치, 아래로 여백 확보) */}
+                  <div className="absolute top-2 left-2 flex items-center gap-2 z-10">
+                    <div
+                      className="flex items-center justify-center h-6 w-6 bg-background/80 backdrop-blur-sm border border-border rounded-sm overflow-hidden cursor-pointer shadow-sm hover:bg-background"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleSelect(img.image_id)
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 accent-primary cursor-pointer border-none"
+                        checked={selectedIds.includes(img.image_id)}
+                        readOnly
+                      />
+                    </div>
+                    <div className="rounded bg-primary/90 backdrop-blur-sm px-2.5 py-1 text-xs font-semibold text-primary-foreground shadow-sm">
+                      {img.section_category}
+                    </div>
                   </div>
+
                   {(() => {
                     const warningLevel = getTempWarningLevel(img.temperature.range_max)
                     if (!warningLevel) return null
                     const IconComponent = warningLevel.icon
+
+                    // 가독성을 극대화하기 위한 완전 불투명 색상 매핑
+                    const solidColors: Record<string, string> = {
+                      'normal': 'bg-green-500 text-white',
+                      'observation': 'bg-yellow-500 text-white',
+                      'caution': 'bg-orange-500 text-white',
+                      'warning': 'bg-red-500 text-white',
+                      'freezing': 'bg-blue-500 text-white',
+                    }
+
+                    const solidClass = solidColors[warningLevel.level] || 'bg-gray-500 text-white'
+
                     return (
-                      <div className={`absolute right-2 top-2 rounded-lg ${warningLevel.bgColor} px-2 py-1 flex items-center gap-1`}>
-                        <IconComponent className={`h-4 w-4 ${warningLevel.color}`} />
-                        <span className={`text-xs font-semibold ${warningLevel.color}`}>
+                      <div className={`absolute right-2 top-2 rounded ${solidClass} px-2.5 py-1 flex items-center gap-1.5 shadow-sm border border-white/20`}>
+                        <IconComponent className="h-3.5 w-3.5" />
+                        <span className="text-xs font-semibold">
                           {warningLevel.label}
                         </span>
                       </div>
@@ -946,34 +964,40 @@ export default function DataManagementPage() {
                 </div>
 
                 {/* 메타데이터 요약 */}
-                <div className="p-4 space-y-3">
-                  {/* ID 및 타임스탬프 with 경고 레벨 */}
+                <div className="px-4 pt-2 pb-3 space-y-2.5 flex-1 flex flex-col">
+                  {/* ID 및 타임스탬프 */}
                   <div>
-                    <div className="text-xs text-muted-foreground">ID: {img.image_id}</div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span>ID: {img.image_id}</span>
+                      {img.gps ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setMapModalImage(img)
+                          }}
+                          className="flex items-center gap-1 text-primary hover:underline"
+                        >
+                          <MapPin className="h-3 w-3" />
+                          <span>위치 보기</span>
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1 text-muted-foreground/50">
+                          <MapPin className="h-3 w-3" />
+                          <span>위치 없음</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1 text-sm font-medium text-card-foreground">
                         <Calendar className="h-3 w-3" />
                         {formatDateTime(img.capture_timestamp)}
                       </div>
-                      {(() => {
-                        const warningLevel = getTempWarningLevel(img.temperature.range_max)
-                        if (!warningLevel) return null
-                        const IconComponent = warningLevel.icon
-                        return (
-                          <div className={`flex items-center gap-1 rounded px-2 py-0.5 ${warningLevel.bgColor}`}>
-                            <IconComponent className={`h-3 w-3 ${warningLevel.color}`} />
-                            <span className={`text-xs font-semibold ${warningLevel.color}`}>
-                              {warningLevel.label}
-                            </span>
-                          </div>
-                        )
-                      })()}
                     </div>
                   </div>
 
                   {/* 온도 - 메타데이터에서 추출한 실제 온도 */}
                   {img.temperature.range_max && (
-                    <div className={`rounded-lg p-3 ${getTempWarningLevel(img.temperature.range_max)?.bgColor || 'bg-muted/50'}`}>
+                    <div className={`rounded-lg p-2.5 ${getTempWarningLevel(img.temperature.range_max)?.bgColor || 'bg-muted/50'}`}>
                       <div className="mb-1 flex items-center gap-1 text-xs font-semibold">
                         <Thermometer className="h-3 w-3" />
                         <span className={getTempWarningLevel(img.temperature.range_max)?.color || 'text-muted-foreground'}>
@@ -986,19 +1010,10 @@ export default function DataManagementPage() {
                     </div>
                   )}
 
-                  {/* 카메라 */}
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Camera className="h-3 w-3" />
-                      {img.camera_model}
-                    </div>
-                    <div>
-                      {img.image_width}x{img.image_height}
-                    </div>
-                  </div>
+                  {/* 삭제됨: 카메라 및 파일 사이즈 블록 */}
 
                   {/* 버튼들 */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-0.5 mt-auto">
                     <Button
                       variant="outline"
                       size="sm"
@@ -1149,7 +1164,7 @@ export default function DataManagementPage() {
                       <div className="mt-3 rounded-lg bg-green-500/10 p-3 border border-green-500/20">
                         <div className="text-xs text-green-700 dark:text-green-400">
                           ✓ 이 온도는 FLIR 전문 라이브러리로 추출한 실제 측정값입니다.
-                          총 {actualStats.pixel_count.toLocaleString()}개 픽셀을 분석했습니다.
+                          총 {actualStats?.pixel_count?.toLocaleString() || '알 수 없는'}개 픽셀을 분석했습니다.
                         </div>
                       </div>
                     )}
@@ -1435,6 +1450,60 @@ export default function DataManagementPage() {
             >
               확인
             </Button>
+          </Card>
+        </div>
+      )}
+
+      {/* ✅ 카카오맵 모달 */}
+      {mapModalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setMapModalImage(null)}
+        >
+          <Card
+            className="w-full max-w-2xl border-border bg-card shadow-xl overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-border bg-card p-4">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-bold text-card-foreground">
+                  구역 위치 ({mapModalImage.section_category})
+                </h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMapModalImage(null)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="p-0">
+              {mapModalImage.gps ? (
+                <KakaoMap
+                  latitude={mapModalImage.gps.latitude}
+                  longitude={mapModalImage.gps.longitude}
+                  height="400px"
+                  className="w-full rounded-none border-none"
+                />
+              ) : (
+                <div className="flex h-[400px] flex-col items-center justify-center bg-muted text-muted-foreground p-6 text-center">
+                  <MapPin className="mb-4 h-12 w-12 opacity-20" />
+                  <p className="text-lg font-medium">GPS 정보가 없습니다</p>
+                  <p className="mt-2 text-sm">해당 이미지에 위치 정보가 포함되어 있지 않습니다.</p>
+                </div>
+              )}
+            </div>
+            <div className="bg-muted/30 p-4 border-t border-border flex justify-between items-center text-sm text-muted-foreground">
+              <div>이미지 ID: {mapModalImage.image_id}</div>
+              {mapModalImage.gps && (
+                <div className="font-mono text-xs">
+                  {mapModalImage.gps.latitude.toFixed(6)}, {mapModalImage.gps.longitude.toFixed(6)}
+                </div>
+              )}
+            </div>
           </Card>
         </div>
       )}

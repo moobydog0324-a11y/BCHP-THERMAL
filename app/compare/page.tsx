@@ -17,17 +17,26 @@ import {
   Split,
   LineChart as LineChartIcon,
   BarChart2,
+  BarChart as BarChartIcon,
   X
 } from "lucide-react"
 import {
+  BarChart,
+  Bar,
   LineChart,
   Line,
+  ScatterChart,
+  Scatter,
   XAxis,
   YAxis,
+  ZAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
+  Legend,
+  Cell,
+  LabelList,
+  ReferenceLine
 } from "recharts"
 
 type ThermalImage = {
@@ -79,7 +88,7 @@ type LocationGroup = {
   trend: 'up' | 'down' | 'stable'
 }
 
-type CompareMode = 'trend' | 'date' | 'profile'
+type CompareMode = 'trend' | 'date' | 'profile' | 'overall'
 
 export default function ComparePage() {
   const router = useRouter()
@@ -95,6 +104,9 @@ export default function ComparePage() {
   const [availableDates, setAvailableDates] = useState<string[]>([])
   const [baseDate, setBaseDate] = useState<string>('')
   const [targetDate, setTargetDate] = useState<string>('')
+
+  // Overall Mode State (multi-date)
+  const [overallSelectedDates, setOverallSelectedDates] = useState<string[]>([])
 
   // Profile Mode States (For Sequential Analysis)
   const [selectedCompareDates, setSelectedCompareDates] = useState<string[]>([])
@@ -120,17 +132,16 @@ export default function ComparePage() {
   useEffect(() => {
     if (locationGroups.length > 0) {
       const isSeq = locationGroups[0].id.startsWith('seq-')
-      // 구역을 변경해도 현재 선택된 탭(mode)을 유지하도록 수정
-      // 단, 프로파일 모드는 순차 데이터(isSeq)일 때만 유효하므로, 아닐 경우 트렌드 모드로 변경
       setMode(prev => (prev === 'profile' && !isSeq) ? 'trend' : prev)
 
       if (availableDates.length > 0) {
-        // 프로파일용 기본 날짜 (최신 3개)
+        // overall용: 최신 날짜를 기본 선택
+        setOverallSelectedDates([availableDates[0]])
+        // 프로파일용 기본 날짜
         setSelectedCompareDates(availableDates.slice(0, 3))
-        // 날짜 비교용 기본 날짜 (가장 과거 vs 가장 최신)
         if (availableDates.length >= 2) {
-          setBaseDate(availableDates[availableDates.length - 1]) // 가장 과거
-          setTargetDate(availableDates[0]) // 가장 최신
+          setBaseDate(availableDates[availableDates.length - 1])
+          setTargetDate(availableDates[0])
         }
       }
     }
@@ -279,6 +290,79 @@ export default function ComparePage() {
     })
   }
 
+  // 전체 트렌드 데이터 (Overall Mode)
+  const getOverallChartData = () => {
+    if (availableDates.length === 0) return []
+
+    // 날짜별로 그룹화 및 정렬 (과거순)
+    const sortedDates = [...availableDates].reverse()
+
+    return sortedDates.map(date => {
+      const dataPoint: any = { date }
+      let totalMaxTemp = 0
+      let validCount = 0
+
+      locationGroups.forEach(group => {
+        if (group.id !== 'no-gps') {
+          const img = group.images.find(i => i.capture_timestamp.startsWith(date))
+          if (img) {
+            const temp = getMaxTemp(img)
+            dataPoint[group.name] = temp
+            totalMaxTemp += temp
+            validCount++
+          }
+        }
+      })
+
+      // 평균 온도 계산
+      dataPoint['평균 온도'] = validCount > 0 ? Number((totalMaxTemp / validCount).toFixed(1)) : null
+
+      return dataPoint
+    })
+  }
+
+  // 전체 트렌드 다중 날짜 데이터 (Overall Mode)
+  // X축: 위치, Y축: 온도, 날짜별 dataKey로 구성
+  const getOverallMultiData = () => {
+    return locationGroups
+      .filter(g => g.id !== 'no-gps')
+      .map(group => {
+        const point: any = { name: group.name, group }
+        overallSelectedDates.forEach(date => {
+          const img = group.images.find(i => i.capture_timestamp.startsWith(date))
+          if (img) {
+            point[date] = getMaxTemp(img)
+            point[`${date}_img`] = img
+          }
+        })
+        return point
+      })
+      .filter(p => overallSelectedDates.some(d => p[d] != null))
+  }
+
+  // 전체 트렌드 요약 스킸스 per date
+  const getOverallSummaryPerDate = () => {
+    return overallSelectedDates.map(date => {
+      const temps: number[] = []
+      let maxTemp = -Infinity
+      let maxGroup: LocationGroup | null = null
+
+      locationGroups.forEach(g => {
+        if (g.id !== 'no-gps') {
+          const img = g.images.find(i => i.capture_timestamp.startsWith(date))
+          if (img) {
+            const t = getMaxTemp(img)
+            temps.push(t)
+            if (t > maxTemp) { maxTemp = t; maxGroup = g }
+          }
+        }
+      })
+
+      const avg = temps.length > 0 ? temps.reduce((a, b) => a + b, 0) / temps.length : 0
+      return { date, avg: Number(avg.toFixed(1)), maxTemp: maxTemp === -Infinity ? 0 : Number(maxTemp.toFixed(1)), maxGroup, count: temps.length }
+    })
+  }
+
   const handleImageSelect = (img: ThermalImage) => {
     if (compareImages.find(i => i.image_id === img.image_id)) {
       setCompareImages(prev => prev.filter(i => i.image_id !== img.image_id))
@@ -328,7 +412,13 @@ export default function ComparePage() {
                     onClick={() => setMode('trend')}
                     className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${mode === 'trend' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
-                    <Activity className="h-4 w-4 inline-block mr-1" />트렌드(위치)
+                    <Activity className="h-4 w-4 inline-block mr-1" />트렌드(위치 단일)
+                  </button>
+                  <button
+                    onClick={() => setMode('overall')}
+                    className={`px-3 py-1.5 rounded-md transition-all whitespace-nowrap ${mode === 'overall' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <BarChartIcon className="h-4 w-4 inline-block mr-1" />전체 트렌드(구역 통합)
                   </button>
                   <button
                     onClick={() => setMode('date')}
@@ -623,6 +713,189 @@ export default function ComparePage() {
                 </div>
               </div>
             )}
+
+            {/* OVERALL TREND MODE */}
+            {mode === 'overall' && (
+              <div className="space-y-6">
+                {/* 헤더 + 날짜 선택 */}
+                <Card className="p-6">
+                  <div className="mb-5">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                      <BarChartIcon className="h-5 w-5 text-primary" /> 구역 전체 온도 비교 ({selectedSection})
+                    </h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      날짜를 선택하면 해당 날짜의 전체 위치 온도를 비교합니다. <span className="font-semibold">최대 3개 날짜 동시 비교</span> 가능.
+                    </p>
+                  </div>
+
+                  {/* 날짜 토글 버튼 */}
+                  <div className="flex flex-wrap gap-2">
+                    {availableDates.map((d, idx) => {
+                      const isSelected = overallSelectedDates.includes(d)
+                      const colorIndex = overallSelectedDates.indexOf(d)
+                      const dateColors = ['#3b82f6', '#f97316', '#8b5cf6']
+                      const selectedColor = isSelected ? dateColors[colorIndex] : undefined
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => {
+                            if (isSelected) {
+                              setOverallSelectedDates(prev => prev.filter(x => x !== d))
+                            } else if (overallSelectedDates.length < 3) {
+                              setOverallSelectedDates(prev => [...prev, d])
+                            }
+                          }}
+                          style={isSelected ? { borderColor: selectedColor, background: selectedColor + '18', color: selectedColor } : {}}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-all
+                            ${isSelected
+                              ? 'shadow-sm'
+                              : 'border-border text-muted-foreground hover:border-primary hover:text-primary'
+                            }
+                            ${!isSelected && overallSelectedDates.length >= 3 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          {isSelected && (
+                            <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: selectedColor }} />
+                          )}
+                          {d}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </Card>
+
+                {/* 날짜별 요약 카드 */}
+                {overallSelectedDates.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {(() => {
+                      const summaries = getOverallSummaryPerDate()
+                      const dateColors = ['#3b82f6', '#f97316', '#8b5cf6']
+                      return summaries.map((s, i) => (
+                        <Card key={s.date} className="p-4 border-l-4" style={{ borderLeftColor: dateColors[i] }}>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-xs text-muted-foreground">{s.date}</p>
+                              <p className="text-xl font-bold mt-1">{s.avg}°C <span className="text-sm font-normal text-muted-foreground">평균</span></p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">최고 위치</p>
+                              <p className="text-sm font-bold mt-1 text-red-500">{s.maxTemp}°C</p>
+                              <p className="text-xs text-muted-foreground">{(s.maxGroup as LocationGroup | null)?.name ?? '-'}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 pt-2 border-t text-xs text-muted-foreground">측정 위치 {s.count}개</div>
+                        </Card>
+                      ))
+                    })()}
+                  </div>
+                )}
+
+                {/* 차트 */}
+                {overallSelectedDates.length > 0 ? (
+                  <Card className="p-4">
+                    {(() => {
+                      const chartData = getOverallMultiData()
+                      const dateColors = ['#3b82f6', '#f97316', '#8b5cf6']
+
+                      const makeDotShape = (date: string, color: string) => (props: any) => {
+                        const { cx, cy, payload, index } = props
+                        const temp = payload[date]
+                        if (temp == null) return <g key={`empty-${date}-${index}`} />
+                        return (
+                          <g
+                            key={`dot-${date}-${index}`}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => {
+                              const img = payload[`${date}_img`]
+                              if (img) {
+                                setPopupLocation({
+                                  id: 'temp-group',
+                                  name: payload.name,
+                                  latitude: img.gps?.latitude || 0,
+                                  longitude: img.gps?.longitude || 0,
+                                  images: [img],
+                                  avgMaxTemp: temp,
+                                  latestTemp: temp,
+                                  trend: 'stable'
+                                })
+                              }
+                            }}
+                          >
+                            <circle cx={cx} cy={cy} r={13} fill={color} opacity={0.12} />
+                            <circle cx={cx} cy={cy} r={7} fill={color} stroke="white" strokeWidth={2} />
+                          </g>
+                        )
+                      }
+
+                      return (
+                        <div className="h-[520px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData} margin={{ top: 30, right: 40, left: 10, bottom: 70 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                              <XAxis
+                                dataKey="name"
+                                tick={{ fontSize: 11, fill: '#64748b' }}
+                                tickLine={false}
+                                axisLine={{ stroke: '#e2e8f0' }}
+                                angle={-40}
+                                textAnchor="end"
+                                interval={0}
+                                dy={8}
+                              />
+                              <YAxis
+                                label={{ value: '최고 온도(°C)', angle: -90, position: 'insideLeft', offset: 15, fill: '#64748b', fontSize: 12 }}
+                                tick={{ fontSize: 12, fill: '#64748b' }}
+                                tickLine={false}
+                                axisLine={false}
+                                domain={['auto', 'auto']}
+                              />
+                              <Tooltip
+                                content={({ active, payload, label }) => {
+                                  if (!active || !payload || !payload.length) return null
+                                  return (
+                                    <div style={{ background: 'white', borderRadius: 10, boxShadow: '0 10px 25px -5px rgb(0 0 0 / 0.15)', padding: '12px 16px', minWidth: 160 }}>
+                                      <p style={{ fontWeight: 700, color: '#1e293b', marginBottom: 8, fontSize: 14 }}>{label}</p>
+                                      {payload.map((p: any, i: number) => (
+                                        <div key={i} className="flex items-center gap-2 mb-1">
+                                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: dateColors[i], display: 'inline-block' }} />
+                                          <span style={{ fontSize: 13, color: '#64748b' }}>{p.name}</span>
+                                          <span style={{ fontSize: 13, fontWeight: 700, color: dateColors[i], marginLeft: 'auto' }}>{Number(p.value).toFixed(1)}°C</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )
+                                }}
+                              />
+                              <Legend
+                                verticalAlign="top"
+                                height={30}
+                                formatter={(value) => <span style={{ fontSize: 12, color: '#64748b' }}>{value}</span>}
+                              />
+                              {overallSelectedDates.map((date, i) => (
+                                <Line
+                                  key={date}
+                                  type="monotone"
+                                  dataKey={date}
+                                  name={date}
+                                  stroke={dateColors[i]}
+                                  strokeWidth={0}
+                                  dot={makeDotShape(date, dateColors[i])}
+                                  activeDot={false}
+                                  connectNulls={false}
+                                />
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )
+                    })()}
+                  </Card>
+                ) : (
+                  <div className="flex items-center justify-center h-40 text-muted-foreground">
+                    <p>위에서 날짜를 선택하면 차트가 표시됩니다.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </main>
@@ -630,10 +903,10 @@ export default function ComparePage() {
       {/* Image Popup Modal */}
       {popupLocation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm" onClick={() => setPopupLocation(null)}>
-          <div className="relative w-full max-w-6xl max-h-[90vh] bg-card rounded-xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-border bg-muted/50">
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <MapPin className="h-6 w-6 text-primary" />
+          <div className="relative w-full max-w-6xl max-h-[95vh] h-[95vh] bg-card rounded-xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between py-3 px-4 border-b border-border bg-muted/50">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary" />
                 {popupLocation.name} 상세 비교
               </h2>
               <Button variant="ghost" size="icon" onClick={() => setPopupLocation(null)} className="h-8 w-8 rounded-full">
@@ -648,8 +921,6 @@ export default function ComparePage() {
                   : popupLocation.images
 
                 let gridClass = "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full"
-                if (displayImages.length === 1) gridClass = "grid-cols-1 max-w-2xl w-full mx-auto"
-                else if (displayImages.length === 2) gridClass = "grid-cols-1 md:grid-cols-2 max-w-4xl w-full mx-auto"
 
                 const hasGps = popupLocation.latitude !== 0 && popupLocation.longitude !== 0
 
@@ -660,16 +931,16 @@ export default function ComparePage() {
                         <KakaoMap
                           latitude={popupLocation.latitude}
                           longitude={popupLocation.longitude}
-                          height="200px"
+                          height="350px"
                         />
                       </div>
                     )}
                     <div className={`grid gap-6 ${gridClass}`}>
                       {displayImages.map((img) => (
-                        <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors">
-                          <div className="p-3 border-b bg-muted/30 flex justify-between items-center">
-                            <div className="font-semibold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
-                            <div className="text-sm text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <Card key={img.image_id} className="overflow-hidden border-2 hover:border-primary transition-colors flex flex-col p-0 gap-0">
+                          <div className="py-2 px-4 border-b bg-muted/30 flex justify-between items-center">
+                            <div className="text-sm font-bold">{new Date(img.capture_timestamp).toLocaleDateString()}</div>
+                            <div className="text-xs font-medium text-muted-foreground">{new Date(img.capture_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                           </div>
                           <div className="aspect-[4/3] relative bg-black cursor-pointer group" onClick={() => openDetailViewer(img.image_id)}>
                             <Image src={img.image_url} alt="Thermal" fill className="object-cover" />

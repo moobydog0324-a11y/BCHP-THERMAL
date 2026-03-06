@@ -41,23 +41,21 @@ export function ThermalROIAnalyzer({ imageUrl, imageId, onClose }: ThermalROIAna
 
   // Canvas 초기화
   useEffect(() => {
-    if (!imageLoaded || !canvasRef.current) return
+    if (!imageLoaded || !canvasRef.current || !imageRef.current) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // 캔버스 크기 설정
-    canvas.width = imageDimensions.width
-    canvas.height = imageDimensions.height
+    // 리사이즈된 이미지의 실제 화면 크기를 캔버스 크기로 맞춤
+    canvas.width = imageRef.current.clientWidth
+    canvas.height = imageRef.current.clientHeight
 
-    // 배경 이미지 그리기
-    if (imageRef.current) {
-      ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height)
-    }
+    // 캔버스는 투명하게 두고 (배경 이미지는 html img 태그로 보여줌)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     // ROI 그리기
-    rois.forEach((roi, index) => {
+    rois.forEach((roi) => {
       const x = roi.x1 * canvas.width
       const y = roi.y1 * canvas.height
       const width = (roi.x2 - roi.x1) * canvas.width
@@ -115,11 +113,8 @@ export function ThermalROIAnalyzer({ imageUrl, imageId, onClose }: ThermalROIAna
     const x = (e.clientX - rect.left) / rect.width
     const y = (e.clientY - rect.top) / rect.height
 
-    // 다시 그리기
+    // 다시 그리기 (배경은 투명하게 비우고 박스만 그림)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    if (imageRef.current) {
-      ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height)
-    }
 
     // 기존 ROI 그리기
     rois.forEach((roi) => {
@@ -187,8 +182,13 @@ export function ThermalROIAnalyzer({ imageUrl, imageId, onClose }: ThermalROIAna
   // ROI 온도 분석
   const analyzeROI = async (roi: ROI) => {
     try {
-      // 원본 이미지 다운로드
-      const response = await fetch(imageUrl)
+      // CORS 문제를 우회하기 위해 Next.js 자체 proxy API를 통해 원본 이미지 다운로드
+      const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`
+      const response = await fetch(proxyUrl)
+      if (!response.ok) {
+        throw new Error(`이미지 로드 실패: ${response.status}`)
+      }
+
       const blob = await response.blob()
       const file = new File([blob], `thermal_${imageId}.jpg`, { type: blob.type })
 
@@ -272,25 +272,24 @@ export function ThermalROIAnalyzer({ imageUrl, imageId, onClose }: ThermalROIAna
 
         <div className="flex flex-1 overflow-hidden">
           {/* 이미지 영역 */}
-          <div className="flex-1 relative bg-black flex items-center justify-center overflow-auto">
-            <div className="relative">
-              {/* 숨겨진 이미지 (로드용) */}
+          <div className="flex-1 relative bg-muted flex items-center justify-center overflow-auto p-4">
+            <div className="relative shadow-xl">
+              {/* 원본 이미지 (보이도록 수정, 투명하게 하지 않음) */}
               <img
                 src={imageUrl}
                 alt="Thermal"
                 onLoad={handleImageLoad}
-                style={{ display: 'none' }}
+                className="max-w-full max-h-[70vh] object-contain block"
                 crossOrigin="anonymous"
               />
 
-              {/* Canvas */}
+              {/* Canvas 오버레이 */}
               <canvas
                 ref={canvasRef}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
-                className="cursor-crosshair max-w-full max-h-full"
-                style={{ maxHeight: '70vh' }}
+                className="absolute inset-0 cursor-crosshair w-full h-full"
               />
             </div>
           </div>

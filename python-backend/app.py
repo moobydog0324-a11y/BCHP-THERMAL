@@ -292,6 +292,10 @@ def extract_thermal_data(metadata):
         "ImageWidth",
         "ImageHeight",
         "Orientation",
+        "GPSLatitude",
+        "GPSLongitude",
+        "GPSAltitude",
+        "GPSAltitudeRef",
     ]
     
     for field in common_fields:

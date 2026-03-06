@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { Suspense, useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -54,7 +54,7 @@ const COLORMAPS = [
   { value: "coolwarm", label: "Cool-Warm", description: "청록색→회색→빨간색" },
 ]
 
-export default function ThermalViewerPage() {
+function ThermalViewerContent() {
   const searchParams = useSearchParams()
   const imageId = searchParams?.get("imageId")
 
@@ -909,7 +909,7 @@ export default function ThermalViewerPage() {
               <Card className="border-border bg-card p-6">
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-xl font-bold text-card-foreground">🔥 열화상 이미지</h3>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant={drawingMode ? "default" : "outline"}
                       size="sm"
@@ -928,10 +928,6 @@ export default function ThermalViewerPage() {
                         </>
                       )}
                     </Button>
-                    <div className="text-sm font-medium text-muted-foreground w-20">
-                      {/* Placeholder for spacing */}
-                    </div>
-
                     {/* Isotherm Toggle */}
                     <Button
                       variant={showIsotherm ? "default" : "outline"}
@@ -944,7 +940,7 @@ export default function ThermalViewerPage() {
                           setIsothermThreshold(result.stats.mean)
                         }
                       }}
-                      className={showIsotherm ? "bg-red-600 hover:bg-red-700" : "ml-2 border-red-200 bg-red-50 text-red-600 hover:bg-red-100"}
+                      className={showIsotherm ? "bg-red-600 hover:bg-red-700" : "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"}
                     >
                       <Flame className="mr-2 h-4 w-4" />
                       {showIsotherm ? "등온선 끄기" : "등온선(Isotherm)"}
@@ -955,7 +951,7 @@ export default function ThermalViewerPage() {
                       variant={deltaMode ? "default" : "outline"}
                       size="sm"
                       onClick={toggleDeltaMode}
-                      className={deltaMode ? "ml-2 bg-purple-600 hover:bg-purple-700 text-white" : "ml-2 border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100"}
+                      className={deltaMode ? "bg-purple-600 hover:bg-purple-700 text-white" : "border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100"}
                     >
                       <Scale className="mr-2 h-4 w-4" />
                       {deltaMode ? "온도차 분석 중... (취소)" : "온도차 분석 (Delta T)"}
@@ -967,7 +963,7 @@ export default function ThermalViewerPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => setShowMap(true)}
-                        className="ml-2 border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                        className="border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
                       >
                         <MapIcon className="mr-2 h-4 w-4" />
                         실화상 위치 확인
@@ -1233,6 +1229,14 @@ export default function ThermalViewerPage() {
         )
       }
     </div >
+  )
+}
+
+export default function ThermalViewerPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center min-h-screen">Loading...</div>}>
+      <ThermalViewerContent />
+    </Suspense>
   )
 }
 

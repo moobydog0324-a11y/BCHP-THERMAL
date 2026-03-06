@@ -29,3 +29,19 @@ next-env.d.ts
 # test files
 test-*.html
 test-*.js
+test-*.jpg
+test-*.png
+
+# log files
+*.log
+flask.log
+nextjs.log
+batch.log
+python-backend/flask.log
+
+# temporary json files
+analyze.json
+analyze2.json
+raw.json
+c2-status.json
+fix_trigger.sql
