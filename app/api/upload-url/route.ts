@@ -32,6 +32,18 @@ export async function POST(request: Request) {
     try {
         const { filename, filetype, folder = "thermal" } = await request.json()
 
+        // 허용된 MIME 타입 검증 (이미지 파일만 허용)
+        const ALLOWED_MIME_TYPES = [
+            'image/jpeg', 'image/jpg', 'image/png',
+            'image/tiff', 'image/x-tiff', 'application/octet-stream'
+        ]
+        if (!filetype || !ALLOWED_MIME_TYPES.includes(filetype.toLowerCase())) {
+            return NextResponse.json(
+                { error: '허용되지 않는 파일 형식입니다. (jpg, png, tiff만 허용)' },
+                { status: 415 }
+            )
+        }
+
         // 환경변수 체크
         if (!process.env.R2_BUCKET_NAME) {
             return NextResponse.json(

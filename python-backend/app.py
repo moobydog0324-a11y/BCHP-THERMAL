@@ -45,7 +45,7 @@ def find_exiftool():
             return path
     
     try:
-        result = subprocess.run(["where", "exiftool"], capture_output=True, text=True, shell=True)
+        result = subprocess.run(["where", "exiftool"], capture_output=True, text=True, shell=False)
         if result.returncode == 0:
             path = result.stdout.strip().split('\n')[0]
             print(f"✅ ExifTool 발견 (시스템 PATH): {path}")
@@ -135,9 +135,18 @@ def analyze():
         file.seek(0)
         print(f"📁 파일: {file.filename} ({file_size:,} bytes / {file_size/1024/1024:.2f} MB)")
 
-        # 임시 파일로 저장
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        tmp_path = tempfile.mktemp(suffix=suffix)
+        # 파일 확장자 검증 (화이트리스트 방식)
+        ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.flir', '.fff', '.csq'}
+        suffix = os.path.splitext(file.filename)[1].lower() if file.filename else ''
+        if not suffix:
+            suffix = '.jpg'
+        if suffix not in ALLOWED_EXTENSIONS:
+            print(f"❌ 허용되지 않는 파일 확장자: {suffix}")
+            return jsonify({"success": False, "error": "허용되지 않는 파일 형식입니다."}), 400
+
+        # 임시 파일로 저장 (NamedTemporaryFile로 경쟁 조건 방지)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            tmp_path = tmp_file.name
         print(f"💾 임시 파일: {tmp_path}")
         file.save(tmp_path)
 
@@ -201,10 +210,10 @@ def analyze():
             return jsonify({"success": False, "error": f"ExifTool 오류: {error_msg}"}), 500
             
     except Exception as e:
-        print(f"❌ 예외: {str(e)}")
+        print(f"❌ 예외 발생")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "분석 중 오류가 발생했습니다."}), 500
 
 def extract_accurate_temperature(image_path, exiftool_path=None):
     """
@@ -330,9 +339,17 @@ def generate_thermal_image():
         print(f"📁 파일: {file.filename}")
         print(f"🎨 컬러맵: {colormap}")
         
-        # 임시 파일로 저장
-        suffix = os.path.splitext(file.filename)[1] or ".jpg"
-        tmp_path = tempfile.mktemp(suffix=suffix)
+        # 파일 확장자 검증 (화이트리스트 방식)
+        ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tiff', '.tif', '.flir', '.fff', '.csq'}
+        suffix = os.path.splitext(file.filename)[1].lower() if file.filename else ''
+        if not suffix:
+            suffix = '.jpg'
+        if suffix not in ALLOWED_EXTENSIONS:
+            return jsonify({"success": False, "error": "허용되지 않는 파일 형식입니다."}), 400
+
+        # 임시 파일로 저장 (NamedTemporaryFile로 경쟁 조건 방지)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_file:
+            tmp_path = tmp_file.name
         file.save(tmp_path)
         
         try:
@@ -413,16 +430,16 @@ def generate_thermal_image():
         except Exception as e:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
-            print(f"❌ 이미지 생성 오류: {e}")
+            print(f"❌ 이미지 생성 오류")
             import traceback
             traceback.print_exc()
-            return jsonify({"success": False, "error": str(e)}), 500
+            return jsonify({"success": False, "error": "이미지 생성 중 오류가 발생했습니다."}), 500
             
     except Exception as e:
-        print(f"❌ 예외: {str(e)}")
+        print(f"❌ 예외 발생")
         import traceback
         traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": "서버 오류가 발생했습니다."}), 500
 
 @app.route("/analyze-roi", methods=["POST"])
 def analyze_roi():
@@ -540,12 +557,12 @@ def analyze_roi():
                 os.unlink(temp_path)
     
     except Exception as e:
-        print(f"❌ ROI 분석 오류: {str(e)}")
+        print(f"❌ ROI 분석 오류")
         import traceback
         traceback.print_exc()
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error": "ROI 분석 중 오류가 발생했습니다."
         }), 500
 
 
@@ -567,5 +584,8 @@ if __name__ == "__main__":
     print("\n🌐 서버: http://localhost:5001")
     print("="*60 + "\n")
     
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    # debug=False: 운영/개발 구분 없이 debug 모드 비활성화 (보안 취약점 방지)
+    # host="0.0.0.0": 내부망 전용 서비스이므로 허용 (방화벽으로 외부 차단 필요)
+    debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
+    app.run(host="0.0.0.0", port=5001, debug=debug_mode)
 

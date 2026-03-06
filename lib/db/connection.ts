@@ -11,7 +11,7 @@ let pool: Pool | null = null
 function getPool(): Pool {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL
-    
+
     if (!connectionString) {
       throw new Error('DATABASE_URL 환경 변수가 설정되지 않았습니다.')
     }
@@ -21,16 +21,17 @@ function getPool(): Pool {
       max: 20, // 최대 연결 수
       idleTimeoutMillis: 60000, // 유휴 연결 타임아웃 (60초)
       connectionTimeoutMillis: 60000, // 연결 타임아웃 (60초)
-      statementTimeout: 120000, // SQL 쿼리 타임아웃 (120초)
+      statement_timeout: 120000, // SQL 쿼리 타임아웃 (120초)
       ssl: {
-        rejectUnauthorized: false, // SSL 인증서 검증 비활성화 (개발 환경)
+        // 운영 환경에서는 SSL 인증서 검증 활성화 (MITM 방지)
+        rejectUnauthorized: process.env.NODE_ENV === 'production',
       },
     })
-    
+
     console.log('✅ PostgreSQL 연결 풀 생성 완료')
     console.log(`   최대 연결: ${pool.options.max}`)
     console.log(`   연결 타임아웃: ${pool.options.connectionTimeoutMillis}ms`)
-    console.log(`   쿼리 타임아웃: ${pool.options.statementTimeout}ms`)
+    console.log(`   쿼리 타임아웃: ${pool.options.statement_timeout}ms`)
 
     // 연결 에러 핸들링
     pool.on('error', (err) => {
@@ -48,17 +49,17 @@ function getPool(): Pool {
  * @param {any[]} params - 쿼리 파라미터
  * @returns {Promise<QueryResult>} 쿼리 결과
  */
-export async function query<T = any>(
+export async function query<T extends Record<string, unknown> = Record<string, unknown>>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
   const pool = getPool()
   const start = Date.now()
-  
+
   try {
     const result = await pool.query<T>(text, params)
     const duration = Date.now() - start
-    
+
     // 개발 환경에서 쿼리 로깅
     if (process.env.NODE_ENV === 'development') {
       console.log('Executed query:', {
@@ -67,7 +68,7 @@ export async function query<T = any>(
         rows: result.rowCount,
       })
     }
-    
+
     return result
   } catch (error) {
     console.error('쿼리 실행 오류:', error)
@@ -86,7 +87,7 @@ export async function transaction<T>(
 ): Promise<T> {
   const pool = getPool()
   const client = await pool.connect()
-  
+
   try {
     await client.query('BEGIN')
     const result = await callback(client)

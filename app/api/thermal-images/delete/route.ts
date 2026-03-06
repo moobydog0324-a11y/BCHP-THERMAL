@@ -8,10 +8,30 @@ const supabase = createClient(
 )
 
 /**
+ * Admin Secret 헤더 검증 (Broken Access Control 방지)
+ */
+function verifyAdminSecret(request: NextRequest): boolean {
+  const adminSecret = process.env.ADMIN_SECRET
+  if (!adminSecret) {
+    console.error('[SECURITY] ADMIN_SECRET 환경변수가 설정되지 않았습니다.')
+    return false
+  }
+  return request.headers.get('x-admin-secret') === adminSecret
+}
+
+/**
  * DELETE /api/thermal-images/delete
  * 이미지 삭제 (DB + Supabase Storage)
  */
 export async function DELETE(request: NextRequest) {
+  // 인증 검증 (Broken Access Control 방지)
+  if (!verifyAdminSecret(request)) {
+    return NextResponse.json(
+      { success: false, error: '접근 권한이 없습니다.' },
+      { status: 401 }
+    )
+  }
+
   try {
     const body = await request.json()
     const { image_id } = body
@@ -46,14 +66,14 @@ export async function DELETE(request: NextRequest) {
     // 2. Supabase Storage에서 파일 삭제
     try {
       // 이미지 URL에서 파일 경로 추출
-      const imageUrl = new URL(imageData.image_url)
+      const imageUrl = new URL(String(imageData.image_url))
       const imagePath = imageUrl.pathname.split('/storage/v1/object/public/thermal-images/')[1]
-      
+
       if (imagePath) {
         const { error: deleteImageError } = await supabase.storage
           .from('thermal-images')
           .remove([imagePath])
-        
+
         if (deleteImageError) {
           console.warn(`⚠️ 원본 이미지 삭제 실패:`, deleteImageError)
         } else {
@@ -63,14 +83,14 @@ export async function DELETE(request: NextRequest) {
 
       // 썸네일 삭제
       if (imageData.thumbnail_url) {
-        const thumbnailUrl = new URL(imageData.thumbnail_url)
+        const thumbnailUrl = new URL(String(imageData.thumbnail_url))
         const thumbnailPath = thumbnailUrl.pathname.split('/storage/v1/object/public/thermal-images/')[1]
-        
+
         if (thumbnailPath) {
           const { error: deleteThumbnailError } = await supabase.storage
             .from('thermal-images')
             .remove([thumbnailPath])
-          
+
           if (deleteThumbnailError) {
             console.warn(`⚠️ 썸네일 삭제 실패:`, deleteThumbnailError)
           } else {
@@ -106,7 +126,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : '이미지 삭제 중 오류가 발생했습니다.',
+        error: '이미지 삭제 중 오류가 발생했습니다.',
       },
       { status: 500 }
     )
