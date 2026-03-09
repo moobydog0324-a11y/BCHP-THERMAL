@@ -227,8 +227,8 @@ export default function DataManagementPage() {
     setSelectedDate('all')
   }
 
-  // 필터링 로직
-  useEffect(() => {
+  // 구역+날짜 필터만 적용된 이미지 (통계 카드용 - 온도 레벨 필터 제외)
+  const baseFilteredImages = React.useMemo(() => {
     let filtered = images
 
     // 1. 구역 필터
@@ -236,15 +236,7 @@ export default function DataManagementPage() {
       filtered = filtered.filter(img => img.section_category === selectedSection)
     }
 
-    // 2. 온도 레벨 필터
-    if (selectedTempLevel !== 'all') {
-      filtered = filtered.filter(img => {
-        const level = getTempWarningLevel(img.temperature.range_max)
-        return level?.level === selectedTempLevel
-      })
-    }
-
-    // 3. 날짜 필터
+    // 2. 날짜 필터
     if (selectedDate !== 'all') {
       filtered = filtered.filter(img => {
         const imgDate = new Date(img.capture_timestamp).toISOString().split('T')[0]
@@ -252,8 +244,23 @@ export default function DataManagementPage() {
       })
     }
 
+    return filtered
+  }, [selectedSection, selectedDate, images])
+
+  // 필터링 로직 (전체 필터 적용)
+  useEffect(() => {
+    let filtered = baseFilteredImages
+
+    // 온도 레벨 필터
+    if (selectedTempLevel !== 'all') {
+      filtered = filtered.filter(img => {
+        const level = getTempWarningLevel(img.temperature.range_max)
+        return level?.level === selectedTempLevel
+      })
+    }
+
     setFilteredImages(filtered)
-  }, [selectedSection, selectedTempLevel, selectedDate, images])
+  }, [selectedTempLevel, baseFilteredImages])
 
   const fetchAllImages = async () => {
     try {
@@ -589,7 +596,7 @@ export default function DataManagementPage() {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">전체 이미지</p>
-                  <p className="text-2xl font-bold text-card-foreground">{images.length}</p>
+                  <p className="text-2xl font-bold text-card-foreground">{baseFilteredImages.length}</p>
                 </div>
               </div>
             </Card>
@@ -606,7 +613,7 @@ export default function DataManagementPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">정상</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => {
+                    {baseFilteredImages.filter(img => {
                       const level = getTempWarningLevel(img.temperature.range_max)
                       return level?.level === 'normal'
                     }).length}
@@ -627,7 +634,7 @@ export default function DataManagementPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">관찰 (40-60°C)</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => {
+                    {baseFilteredImages.filter(img => {
                       const level = getTempWarningLevel(img.temperature.range_max)
                       return level?.level === 'observation'
                     }).length}
@@ -648,7 +655,7 @@ export default function DataManagementPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">주의 (60-70°C)</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => {
+                    {baseFilteredImages.filter(img => {
                       const level = getTempWarningLevel(img.temperature.range_max)
                       return level?.level === 'caution'
                     }).length}
@@ -669,7 +676,7 @@ export default function DataManagementPage() {
                 <div>
                   <p className="text-xs font-medium text-muted-foreground">경고 (70°C+)</p>
                   <p className="text-2xl font-bold text-card-foreground">
-                    {images.filter(img => {
+                    {baseFilteredImages.filter(img => {
                       const level = getTempWarningLevel(img.temperature.range_max)
                       return level?.level === 'warning'
                     }).length}
@@ -1079,24 +1086,22 @@ export default function DataManagementPage() {
                     className="object-contain"
                   />
                 </div>
+                {/* 지도 위치 보기 버튼 */}
+                {selectedImage.gps && (
+                  <button
+                    onClick={() => {
+                      setMapModalImage(selectedImage)
+                    }}
+                    className="absolute top-3 right-3 flex items-center gap-1.5 rounded-lg bg-white/90 dark:bg-gray-800/90 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 shadow-lg backdrop-blur-sm border border-gray-200 dark:border-gray-600 hover:bg-white dark:hover:bg-gray-700 hover:shadow-xl transition-all duration-200 hover:scale-105 cursor-pointer"
+                    title="지도에서 촬영 위치 보기"
+                  >
+                    <MapPin className="h-4 w-4 text-primary" />
+                    <span>위치 보기</span>
+                  </button>
+                )}
               </div>
 
-              {/* 기본 정보 */}
-              <div>
-                <h3 className="mb-3 text-lg font-semibold text-card-foreground">📋 기본 정보</h3>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <InfoItem label="이미지 ID" value={selectedImage.image_id.toString()} />
-                  <InfoItem label="점검 ID" value={selectedImage.inspection_id.toString()} />
-                  <InfoItem label="구역" value={selectedImage.section_category} />
-                  <InfoItem label="촬영 시각" value={formatDateTime(selectedImage.capture_timestamp)} />
-                  <InfoItem label="카메라" value={selectedImage.camera_model} />
-                  <InfoItem label="해상도" value={`${selectedImage.image_width}x${selectedImage.image_height}`} />
-                  <InfoItem label="파일 크기" value={formatFileSize(selectedImage.file_size_bytes)} />
-                  <InfoItem label="이미지 타입" value={selectedImage.image_type} />
-                </div>
-              </div>
-
-              {/* 온도 정보 */}
+              {/* 온도 정보 (맨 위) */}
               {selectedImage.temperature.range_max && (() => {
                 const warningLevel = getTempWarningLevel(selectedImage.temperature.range_max)
                 const IconComponent = warningLevel?.icon || Thermometer
@@ -1194,6 +1199,21 @@ export default function DataManagementPage() {
                   </div>
                 )
               })()}
+
+              {/* 기본 정보 */}
+              <div>
+                <h3 className="mb-3 text-lg font-semibold text-card-foreground">📋 기본 정보</h3>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <InfoItem label="이미지 ID" value={selectedImage.image_id.toString()} />
+                  <InfoItem label="점검 ID" value={selectedImage.inspection_id.toString()} />
+                  <InfoItem label="구역" value={selectedImage.section_category} />
+                  <InfoItem label="촬영 시각" value={formatDateTime(selectedImage.capture_timestamp)} />
+                  <InfoItem label="카메라" value={selectedImage.camera_model} />
+                  <InfoItem label="해상도" value={`${selectedImage.image_width}x${selectedImage.image_height}`} />
+                  <InfoItem label="파일 크기" value={formatFileSize(selectedImage.file_size_bytes)} />
+                  <InfoItem label="이미지 타입" value={selectedImage.image_type} />
+                </div>
+              </div>
 
               {/* GPS 정보 */}
               {selectedImage.gps && (

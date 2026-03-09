@@ -238,6 +238,7 @@ def extract_accurate_temperature(image_path, exiftool_path=None):
             return None
         
         # 온도 통계 계산 (부동소수점 정밀도 보장)
+        height, width = thermal_np.shape
         stats = {
             'min_temp': float(np.round(np.min(thermal_np), 2)),
             'max_temp': float(np.round(np.max(thermal_np), 2)),
@@ -248,6 +249,30 @@ def extract_accurate_temperature(image_path, exiftool_path=None):
             'data_source': 'flir-image-extractor',
             'note': '모든 보정(대기전송, 방사율, 반사 등)이 적용된 정확한 온도입니다.'
         }
+        
+        # 온도 2D 배열을 gzip 압축 + base64 인코딩하여 포함
+        # ROI 영역 분석 시 프론트엔드에서 직접 계산에 사용
+        try:
+            import gzip
+            import base64
+            # float32 정밀도로 변환하여 용량 절약 (float64 대비 50% 절감)
+            temp_bytes = thermal_np.astype(np.float32).tobytes()
+            compressed = gzip.compress(temp_bytes, compresslevel=6)
+            encoded = base64.b64encode(compressed).decode('ascii')
+            
+            stats['temperature_grid'] = {
+                'data': encoded,
+                'width': int(width),
+                'height': int(height),
+                'dtype': 'float32',
+                'encoding': 'gzip+base64',
+                'original_bytes': len(temp_bytes),
+                'compressed_bytes': len(compressed),
+            }
+            ratio = len(compressed) / len(temp_bytes) * 100
+            print(f"   📦 온도 배열 압축: {len(temp_bytes):,}B → {len(compressed):,}B ({ratio:.1f}%)")
+        except Exception as grid_err:
+            print(f"   ⚠️  온도 배열 압축 실패 (통계는 정상): {grid_err}")
         
         return stats
         
