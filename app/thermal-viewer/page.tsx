@@ -127,15 +127,15 @@ function ThermalViewerContent() {
     setShowIsotherm(false)
 
     try {
-      // 1. DB에서 이미지 정보 조회
-      const response = await fetch(`/api/thermal-images?with_metadata=true`)
+      // 1. DB에서 단일 이미지 정보 조회 (최적화: 전체 조회 → 단일 조회)
+      const response = await fetch(`/api/thermal-images/${encodeURIComponent(id)}`)
       const data = await response.json()
 
       if (!data.success) {
-        throw new Error('이미지 조회 실패')
+        throw new Error(data.error || '이미지 조회 실패')
       }
 
-      const imageData = data.data.find((img: any) => img.image_id === parseInt(id))
+      const imageData = data.data
 
       if (!imageData) {
         throw new Error('이미지를 찾을 수 없습니다')

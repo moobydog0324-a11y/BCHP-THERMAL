@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60" fill="none">
+  <!-- GS Symbol - Circular mark inspired by the GS logo -->
+  <circle cx="24" cy="30" r="22" fill="url(#gsGradient)" />
+  <path d="M18 22 C18 18, 24 16, 28 18 C32 20, 32 24, 28 26 L24 28 L30 28 C30 28, 34 28, 34 32 C34 36, 30 38, 26 38 C22 38, 18 36, 18 32" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Company Name -->
+  <text x="54" y="27" font-family="'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif" font-weight="700" font-size="18" fill="#1a1a1a">
+    GS반월열병합발전
+  </text>
+  
+  <!-- Subtitle -->
+  <text x="54" y="45" font-family="'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif" font-weight="400" font-size="10" fill="#666666">
+    BCHP Thermal Pipe Management
+  </text>
+  
+  <defs>
+    <linearGradient id="gsGradient" x1="2" y1="8" x2="46" y2="52">
+      <stop offset="0%" stop-color="#00B050"/>
+      <stop offset="50%" stop-color="#0088CC"/>
+      <stop offset="100%" stop-color="#005DAA"/>
+    </linearGradient>
+  </defs>
+</svg>
