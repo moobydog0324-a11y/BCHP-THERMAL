@@ -2,63 +2,13 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Activity, Database, ImageIcon, LineChart, Thermometer, Shield, Zap, BarChart3 } from "lucide-react"
+import { Activity, Database, ImageIcon, LineChart, Thermometer, Shield, Zap, BarChart3, MapPin } from "lucide-react"
+import AppNavbar from "@/components/AppNavbar"
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto flex items-center justify-between px-6 py-4">
-          <Link href="/" className="flex items-center gap-3 transition-opacity hover:opacity-80">
-            <Image
-              src="/gs-logo-real.png"
-              alt="GS반월열병합발전"
-              width={220}
-              height={50}
-              priority
-              className="object-contain"
-            />
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link href="/data">
-              <Button variant="ghost" className="text-foreground">
-                💾 데이터관리
-              </Button>
-            </Link>
-            <Link href="/compare">
-              <Button variant="ghost" className="text-foreground">
-                📊 비교분석
-              </Button>
-            </Link>
-            <Link href="/thermal-analysis">
-              <Button variant="ghost" className="text-foreground">
-                🔥 열화상분석
-              </Button>
-            </Link>
-            <Link href="/upload">
-              <Button variant="ghost" className="text-foreground">
-                📤 업로드
-              </Button>
-            </Link>
-            {/* 개발자 메뉴 (숨김) */}
-            {process.env.NODE_ENV === 'development' && (
-              <>
-                <Link href="/debug">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground">
-                    🐛
-                  </Button>
-                </Link>
-                <Link href="/exif-test">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground">
-                    🔬
-                  </Button>
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
-      </header>
+      <AppNavbar />
 
       {/* Hero Section — GS Branding */}
       <section className="relative overflow-hidden">
@@ -140,7 +90,7 @@ export default function HomePage() {
       {/* Features Grid */}
       <section className="container mx-auto px-6 py-12">
         <h3 className="mb-8 text-center text-2xl font-bold text-foreground">주요 기능</h3>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Link href="/data" className="flex h-full w-full">
             <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl hover:border-[#00B050]/30 cursor-pointer">
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#00B050]/10">
@@ -185,6 +135,30 @@ export default function HomePage() {
               <h3 className="mb-2 text-lg font-bold text-card-foreground">📊 GPS 기반 비교</h3>
               <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
                 동일한 GPS 위치에서 촬영된 이미지들을 시계열로 비교하여 온도 변화를 분석합니다.
+              </p>
+            </Card>
+          </Link>
+
+          <Link href="/pipe-map" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl hover:border-teal-500/30 cursor-pointer">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-teal-500/10">
+                <MapPin className="h-6 w-6 text-teal-600" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-card-foreground">🗺️ 배관 지도</h3>
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
+                Kakao/Leaflet 듀얼 맵에서 맨홀, 밸브, 배관 라인을 시각화하고 관리합니다.
+              </p>
+            </Card>
+          </Link>
+
+          <Link href="/dashboard" className="flex h-full w-full">
+            <Card className="flex flex-col h-full w-full border-2 border-border bg-card p-6 shadow-md transition-all hover:-translate-y-1 hover:shadow-xl hover:border-amber-500/30 cursor-pointer">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-amber-500/10">
+                <BarChart3 className="h-6 w-6 text-amber-600" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-card-foreground">📈 대시보드</h3>
+              <p className="flex-1 text-sm leading-relaxed text-muted-foreground">
+                배관 연령 분포, 설비 현황, 정비 대상 등 주요 지표를 차트와 테이블로 확인합니다.
               </p>
             </Card>
           </Link>
